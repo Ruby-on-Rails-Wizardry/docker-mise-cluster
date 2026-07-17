@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Read config/apps.yml and print app / shared-gem fields for other scripts.
+#
+# Usage:
+#   bin/apps names          # fred george
+#   bin/apps paths          # fred george  (path field)
+#   bin/apps ports          # name=port lines
+#   bin/apps shared-paths   # shared gem paths
+#   bin/apps yaml           # dump validated YAML summary
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APPS_YML="${ROOT}/config/apps.yml"
+
+if [[ ! -f "${APPS_YML}" ]]; then
+  echo "error: missing ${APPS_YML}" >&2
+  exit 1
+fi
+
+cmd="${1:-names}"
+
+ruby -r yaml -e '
+apps_yml = ARGV[0]
+cmd = ARGV[1]
+cfg = YAML.load_file(apps_yml) || {}
+apps = cfg["apps"] || []
+gems = cfg["shared_gems"] || []
+
+case cmd
+when "names"
+  apps.each { |a| puts a.fetch("name") }
+when "paths"
+  apps.each { |a| puts a.fetch("path", a.fetch("name")) }
+when "ports"
+  apps.each do |a|
+    name = a.fetch("name")
+    path = a.fetch("path", name)
+    port = a.fetch("port")
+    puts "#{name}\t#{path}\t#{port}"
+  end
+when "shared-paths"
+  gems.each { |g| puts g.is_a?(Hash) ? g.fetch("path", g.fetch("name")) : g }
+when "yaml"
+  puts "apps:"
+  apps.each { |a| puts "  - #{a.fetch("name")} path=#{a.fetch("path", a.fetch("name"))} port=#{a.fetch("port")}" }
+  puts "shared_gems:"
+  if gems.empty?
+    puts "  (none)"
+  else
+    gems.each { |g| puts "  - #{g.is_a?(Hash) ? g.inspect : g}" }
+  end
+else
+  warn "unknown command: #{cmd}"
+  exit 1
+end
+' "${APPS_YML}" "${cmd}"

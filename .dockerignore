@@ -1,0 +1,15 @@
+.git
+.cache/bundle
+.cache/yarn
+.cache/yarn-cache
+.cache/rubygems
+.cache/mise
+**/log/*
+**/tmp/*
+**/node_modules
+**/storage/*
+**/.git
+*.md
+!README.md
+.env
+.env.*

@@ -1,0 +1,59 @@
+# Bundler / gem + yarn caches (populated by bin/setup; used by Docker preferentially)
+.cache/bundle/**
+!.cache/bundle/.gitkeep
+.cache/rubygems/**
+!.cache/rubygems/.gitkeep
+.cache/yarn/**
+!.cache/yarn/.gitkeep
+.cache/yarn-cache/**
+!.cache/yarn-cache/.gitkeep
+.cache/mise/
+
+# Accidental per-app caches (must use cluster .cache/* only)
+fred/.cache/
+george/.cache/
+
+vendor/bundle/
+vendor/cache/
+
+# App runtime / build artifacts
+**/log/*
+!**/log/.keep
+**/tmp/*
+!**/tmp/.keep
+!**/tmp/pids/
+!**/tmp/pids/.keep
+**/storage/*
+!**/storage/.keep
+**/public/assets
+**/public/packs
+**/node_modules
+**/app/assets/builds/*
+!**/app/assets/builds/.keep
+
+# Credentials / secrets
+**/config/master.key
+**/config/credentials/*.key
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# Coverage / test
+coverage/
+.rspec_status
+spec/examples.txt
+
+# Docker
+.docker/
+
+# Ruby
+*.gem
+.ruby-gemset

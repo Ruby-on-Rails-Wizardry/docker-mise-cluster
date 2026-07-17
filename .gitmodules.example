@@ -1,0 +1,16 @@
+# Example git submodule layout for real projects.
+# Copy to .gitmodules and adjust URLs, then:
+#   git submodule add <url> <path>
+#   git submodule update --init --recursive
+#
+# Keep paths in sync with config/apps.yml (and shared_gems).
+
+[submodule "fred"]
+	path = fred
+	url = git@git.example.com:example/fred.git
+[submodule "george"]
+	path = george
+	url = git@git.example.com:example/george.git
+# [submodule "example_gem"]
+# 	path = example_gem
+# 	url = git@git.example.com:example/example_gem.git

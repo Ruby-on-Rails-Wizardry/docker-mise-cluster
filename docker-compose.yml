@@ -1,0 +1,87 @@
+# Multi-app dev cluster: Ubuntu + mise image, shared Bundler/Yarn caches.
+#
+# Cache *relative* paths: config/cache-layout.env (single source of truth).
+# Always run via: bin/compose …   (injects that file for ${CACHE_*} interpolation)
+# App list SSOT: config/apps.yml  (keep compose services in sync for MVP)
+#
+# Prefer host-warmed caches: bin/setup && bin/compose up
+#
+# Project mount: $HOME/wf  →  /home/${USER}/wf  (WORKDIR)
+
+x-cache-env: &cache-env
+
+  BUNDLE_PATH: /home/${USER:-dev}/wf/${CACHE_BUNDLE:-.cache/bundle}
+  BUNDLE_CACHE_PATH: /home/${USER:-dev}/wf/${CACHE_RUBYGEMS:-.cache/rubygems}
+  YARN_CACHE_FOLDER: /home/${USER:-dev}/wf/${CACHE_YARN_FOLDER:-.cache/yarn-cache}
+
+# Container login name (build + runtime). Defaults to host $USER, else "dev".
+x-runtime-env: &runtime-env
+  HOME: /home/${USER:-dev}
+  USER: ${USER:-dev}
+  WORKSPACE: /home/${USER:-dev}/wf
+  MISE_DATA_DIR: /home/${USER:-dev}/.local/share/mise
+
+x-service-env: &service-env
+  <<: [*cache-env, *runtime-env]
+
+x-healthcheck: &healthcheck-defaults
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 90s
+
+services:
+  base: &base
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER: ${USER:-dev}
+        DEV_UID: ${DEV_UID:-1000}
+        DEV_GID: ${DEV_GID:-1000}
+        POSTGRESQL_VERSION: ${POSTGRESQL_VERSION:-18}
+
+    image: wf-dev:latest
+    user: ${USER:-dev}
+    working_dir: /home/${USER:-dev}/wf
+    environment:
+      <<: *service-env
+    volumes:
+      # Whole cluster root (apps, .cache, node_modules, config) → $HOME/wf
+      - .:/home/${USER:-dev}/wf:cached
+    stdin_open: true
+    tty: true
+
+  # Interactive shell for general development / cache inspection
+  dev:
+    <<: *base
+    profiles: ["dev"]
+    command: ["bash", "-lc", "mise install && exec bash"]
+
+  # --- App services (ports/paths must match config/apps.yml) ---
+
+  fred:
+    <<: *base
+    working_dir: /home/${USER:-dev}/wf/fred
+    environment:
+      <<: *service-env
+      PORT: "3000"
+    command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
+    ports:
+      - "3000:3000"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "curl", "-f", "http://localhost:3000/up"]
+
+  george:
+    <<: *base
+    working_dir: /home/${USER:-dev}/wf/george
+    environment:
+      <<: *service-env
+      PORT: "3001"
+    command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
+    ports:
+      - "3001:3001"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "curl", "-f", "http://localhost:3001/up"]

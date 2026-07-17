@@ -1,0 +1,12 @@
+# Pin tools for host and container parity (mise).
+# Classic Yarn 1.x (target project uses legacy yarn, not Berry).
+[tools]
+ruby = "4.0.5"
+node = "25.7.0"
+yarn = "1.22.22"
+
+[settings]
+idiomatic_version_file_enable_tools = ["ruby"]
+
+[settings.ruby]
+compile = false

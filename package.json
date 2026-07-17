@@ -1,0 +1,14 @@
+{
+  "name": "wf",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "fred",
+    "george"
+  ],
+  "scripts": {
+    "test": "yarn workspaces run test",
+    "test:fred": "yarn workspace fred test",
+    "test:george": "yarn workspace george test"
+  }
+}

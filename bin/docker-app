@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Start a Rails app inside the Ubuntu+mise dev container, preferring host-warmed caches.
+#
+# Expects compose (via bin/compose) to set BUNDLE_PATH, BUNDLE_CACHE_PATH,
+# YARN_CACHE_FOLDER from config/cache-layout.env. Falls back to bin/cache-env.
+
+set -euo pipefail
+
+PORT="${PORT:-3000}"
+APP_NAME="$(basename "$(pwd)")"
+
+eval "$(mise activate bash)" 2>/dev/null || true
+
+# shellcheck source=bin/cache-env
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cache-env"
+
+echo "== ${APP_NAME}: BUNDLE_PATH=${BUNDLE_PATH}"
+echo "== ${APP_NAME}: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH}"
+echo "== ${APP_NAME}: YARN_CACHE_FOLDER=${YARN_CACHE_FOLDER}"
+echo "== ${APP_NAME}: yarn $(yarn --version 2>/dev/null || echo unknown)"
+
+if bundle check >/dev/null 2>&1; then
+  echo "== ${APP_NAME}: bundle already satisfied"
+else
+  echo "== ${APP_NAME}: bundle install (prefer local gem cache)"
+  if ! bundle install --local; then
+    echo "== ${APP_NAME}: local cache incomplete; fetching missing gems"
+    bundle install
+  fi
+fi
+
+# Cluster root: WORKSPACE ($HOME/wf) from compose / image env.
+CLUSTER_ROOT="${WORKSPACE:-${HOME:+${HOME}/wf}}"
+CLUSTER_ROOT="${CLUSTER_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+
+if [[ -f "${CLUSTER_ROOT}/package.json" ]] && [[ -f "${CLUSTER_ROOT}/yarn.lock" ]]; then
+  if [[ ! -d "${CLUSTER_ROOT}/node_modules" ]]; then
+    echo "== ${APP_NAME}: yarn install (prefer classic offline mirror)"
+    (
+      cd "${CLUSTER_ROOT}"
+      if ! yarn install --frozen-lockfile --offline; then
+        echo "== ${APP_NAME}: offline mirror incomplete; trying --prefer-offline"
+        if ! yarn install --frozen-lockfile --prefer-offline; then
+          echo "== ${APP_NAME}: fetching remaining packages from network"
+          yarn install --frozen-lockfile
+        fi
+      fi
+    )
+  else
+    echo "== ${APP_NAME}: node_modules present (host mount); skipping yarn install"
+  fi
+fi
+
+
+bin/rails db:prepare
+exec bin/rails server -b 0.0.0.0 -p "${PORT}"
