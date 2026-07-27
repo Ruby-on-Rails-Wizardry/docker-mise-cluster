@@ -29,6 +29,8 @@ git config --global --add url."https://gitlab.com/".insteadOf "git@gitlab.com:"
 git pull && git submodule sync --recursive && git submodule update --init --recursive
 ```
 
+Site-local edits (corp base images, proxy/CA): keep them on a **`local`** branch and **rebase onto `master`** after each pull — full workflow in that guide (do not push those commits to public `master`).
+
 Then edit `config/apps.yml` / `.gitmodules` when adopting into a real project.
 
 ## Layout
