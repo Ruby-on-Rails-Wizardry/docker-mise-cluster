@@ -40,8 +40,12 @@ vendor/cache/
 
 # Editor / OS
 .DS_Store
-*.swp
 *~
+*.swp
+*.swo
+*.swn
+Session.vim
+.netrwhist
 .idea/
 .vscode/
 *.code-workspace

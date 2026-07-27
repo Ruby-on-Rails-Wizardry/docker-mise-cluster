@@ -9,15 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Security
+
+## [0.2.1] - 2026-07-27
+
+### Added
+
 - [Taskfile.yml](Taskfile.yml) host UX (`task setup`, `task up:fred`, `task compose`, …); pin **Task 3.52.0** in [mise.toml](mise.toml)
 
 ### Changed
 
 - **fred** and **george** are independent git repos and **submodules** of this cluster ([fred](https://github.com/Ruby-on-Rails-Wizardry/fred), [george](https://github.com/Ruby-on-Rails-Wizardry/george)); clone with `--recurse-submodules`
-
-### Fixed
-
-### Security
+- Expand `.gitignore` Vim artifact coverage (`*~`, `*.swp`/`*.swo`/`*.swn`, `Session.vim`, `.netrwhist`)
+- Pin [fred](https://github.com/Ruby-on-Rails-Wizardry/fred) and [george](https://github.com/Ruby-on-Rails-Wizardry/george) for matching Vim ignores
 
 ## [0.2.0] - 2026-07-27
 
@@ -51,6 +59,7 @@ First tagged release of the multi-app Docker + mise cluster template.
 - Docker image build: copy root `Gemfile` so `mise install` installs Ruby (not only Node/Yarn)
 - Untrusted `fred/mise.toml` / `george/mise.toml` under the host bind mount
 
-[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/releases/tag/v0.1.0
