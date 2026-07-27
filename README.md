@@ -124,12 +124,12 @@ Always use **`bin/compose`** (not plain `docker compose`) so `config/cache-layou
 
 ## Adopting into a real project
 
-1. Copy/clone/untar this `wf/` tree into your umbrella repo (or use it as the repo root).
-2. Edit **`config/apps.yml`** — names, paths, ports.
-3. Replace demo apps with **git submodules** (see `.gitmodules.example`).
+1. Copy/clone this `wf/` tree (or use it as the repo root) with **`--recurse-submodules`**.
+2. Edit **`config/apps.yml`** — names, paths, ports, `url_root`, databases.
+3. Point **`.gitmodules`** at your app repos (demo apps are already submodules: [fred](https://github.com/Ruby-on-Rails-Wizardry/fred), [george](https://github.com/Ruby-on-Rails-Wizardry/george)).
 4. Update root **`package.json`** `workspaces` if JS workspaces change.
 5. Keep **`docker-compose.yml`** app services (ports, `RAILS_RELATIVE_URL_ROOT`) and **`nginx/nginx.conf`** locations in sync with `apps.yml` (MVP: manual; generation later).
-6. Run `bin/setup` and `bin/compose up` (includes nginx on **8080**).
+6. Run `bin/setup` and `bin/compose up fred` (or `george` / both).
 
 ## Cache model
 
