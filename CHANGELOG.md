@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Security
+
+## [0.2.0] - 2026-07-27
+
+### Added
+
 - Compose **Postgres 18** (`db`) and **Redis 8** (`redis`) with published ports 5432 / 6379
 - Per-app databases via `docker/postgres/init-databases.sql` (`fred_*`, `george_*`)
 - Fred/George: `pg` + `redis` gems; development/test `database.yml` for PostgreSQL; `DATABASE_URL` / `REDIS_URL` from compose
@@ -20,10 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MVP services now include shared data stores (not only nginx + app processes)
 - Yarn install failures no longer block Rails boot (JS is optional for the server process)
 - **Nginx first:** apps `depends_on` nginx (+ db/redis); nginx no longer waits for apps — `bin/compose up fred` (or `george`) brings only that app’s stack
-
-### Fixed
-
-### Security
 
 ## [0.1.0] - 2026-07-27
 
@@ -41,5 +47,6 @@ First tagged release of the multi-app Docker + mise cluster template.
 - Docker image build: copy root `Gemfile` so `mise install` installs Ruby (not only Node/Yarn)
 - Untrusted `fred/mise.toml` / `george/mise.toml` under the host bind mount
 
-[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/releases/tag/v0.1.0
