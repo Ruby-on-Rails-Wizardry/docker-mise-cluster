@@ -4,6 +4,9 @@
 
 source "https://rubygems.org"
 
+# Source of truth for Ruby (mise reads this via idiomatic version files).
+ruby "4.0.6"
+
 gem "rails", "~> 8.1"
 gem "rubocop", "~> 1.88"
 gem "rubocop-rails", require: false

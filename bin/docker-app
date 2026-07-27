@@ -9,7 +9,17 @@ set -euo pipefail
 PORT="${PORT:-3000}"
 APP_NAME="$(basename "$(pwd)")"
 
-eval "$(mise activate bash)" 2>/dev/null || true
+# Cluster root: WORKSPACE ($HOME/wf) from compose / image env.
+CLUSTER_ROOT="${WORKSPACE:-${HOME:+${HOME}/wf}}"
+CLUSTER_ROOT="${CLUSTER_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+
+# Host bind-mount replaces the image's /wf; app dirs have their own mise.toml.
+# Prefer MISE_TRUSTED_CONFIG_PATHS (compose/Dockerfile); trust is a fallback.
+if command -v mise >/dev/null 2>&1; then
+  mise trust "${CLUSTER_ROOT}" 2>/dev/null || true
+  mise trust . 2>/dev/null || true
+  eval "$(mise activate bash)" 2>/dev/null || true
+fi
 
 # shellcheck source=bin/cache-env
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cache-env"
@@ -28,10 +38,6 @@ else
     bundle install
   fi
 fi
-
-# Cluster root: WORKSPACE ($HOME/wf) from compose / image env.
-CLUSTER_ROOT="${WORKSPACE:-${HOME:+${HOME}/wf}}"
-CLUSTER_ROOT="${CLUSTER_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
 if [[ -f "${CLUSTER_ROOT}/package.json" ]] && [[ -f "${CLUSTER_ROOT}/yarn.lock" ]]; then
   if [[ ! -d "${CLUSTER_ROOT}/node_modules" ]]; then

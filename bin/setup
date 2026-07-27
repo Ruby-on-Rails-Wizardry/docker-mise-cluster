@@ -283,7 +283,8 @@ Host tools and download caches are ready.
 
 Recommended flow:
   bin/setup
-  bin/compose up ${APP_NAMES[*]:-fred george}
+  bin/compose up
+  # nginx → http://localhost:8080/  ( /fred/ and /george/ )
   # always use bin/compose so cache-layout.env is loaded
 
 Re-run anytime; the script is idempotent.

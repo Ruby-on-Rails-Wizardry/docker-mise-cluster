@@ -23,6 +23,9 @@ ENV LANG=C.UTF-8 \
     MISE_CONFIG_DIR=/home/${USER}/.config/mise \
     MISE_CACHE_DIR=/home/${USER}/.cache/mise \
     MISE_RUBY_COMPILE=false \
+    # Bind-mounted project mise.toml files (root + fred/ + george/) stay trusted
+    # without an interactive `mise trust` (same idea as ubuntu-mise /work).
+    MISE_TRUSTED_CONFIG_PATHS=/home/${USER}/wf \
     PATH=/home/${USER}/.local/bin:/home/${USER}/.local/share/mise/shims:${PATH} \
     HOME=/home/${USER} \
     WORKSPACE=/home/${USER}/wf
@@ -73,10 +76,12 @@ RUN curl -fsSL https://mise.run | MISE_VERSION="${MISE_VERSION}" sh \
     && echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc \
     && echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bash_profile
 
-# Copy only version pins first for better layer caching.
-COPY --chown=${USER}:${USER} mise.toml /home/${USER}/wf/mise.toml
+# Copy version pins first for better layer caching.
+# Ruby is not under [tools] in mise.toml — mise reads `ruby "…"` from Gemfile
+# (idiomatic_version_file_enable_tools). Gemfile must be present at install time.
+COPY --chown=${USER}:${USER} mise.toml Gemfile /home/${USER}/wf/
 
-# Trust project config and install pinned Ruby + Node + Yarn 1.
+# Trust project config and install Ruby (from Gemfile) + Node + Yarn 1.
 RUN ~/.local/bin/mise trust /home/${USER}/wf/mise.toml \
     && ~/.local/bin/mise install \
     && ~/.local/bin/mise reshim \

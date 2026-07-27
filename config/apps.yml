@@ -8,11 +8,12 @@ apps:
   - name: fred
     path: fred
     port: 3000
-    # url_root: /fred          # optional; for later nginx integration
-    # health: /up              # default /up
+    url_root: /fred            # nginx path prefix (RAILS_RELATIVE_URL_ROOT)
+    # health: /up              # default /up (nginx strips url_root before proxy)
   - name: george
     path: george
     port: 3001
+    url_root: /george
 
 # Shared path-gems mounted into the workspace (optional for MVP).
 # When present, bin/setup does not treat them as Rails apps unless listed under apps.

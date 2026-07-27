@@ -43,7 +43,11 @@ when "shared-paths"
   gems.each { |g| puts g.is_a?(Hash) ? g.fetch("path", g.fetch("name")) : g }
 when "yaml"
   puts "apps:"
-  apps.each { |a| puts "  - #{a.fetch("name")} path=#{a.fetch("path", a.fetch("name"))} port=#{a.fetch("port")}" }
+  apps.each do |a|
+    root = a["url_root"]
+    root_s = root ? " url_root=#{root}" : ""
+    puts "  - #{a.fetch("name")} path=#{a.fetch("path", a.fetch("name"))} port=#{a.fetch("port")}#{root_s}"
+  end
   puts "shared_gems:"
   if gems.empty?
     puts "  (none)"

@@ -1,0 +1,11 @@
+# App-local mise config. Ruby version comes from this app's Gemfile.
+# Parent ../mise.toml supplies node/yarn and shared settings merge.
+
+min_version = "2025.8.0"
+
+[settings]
+ruby.compile = false
+idiomatic_version_file_enable_tools = ["ruby"]
+
+[tools]
+# No ruby pin — version comes from the Gemfile.

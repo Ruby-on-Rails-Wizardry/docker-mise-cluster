@@ -54,6 +54,9 @@ spec/examples.txt
 # Docker
 .docker/
 
+# Bundler local config (bin/setup symlinks config/bundler-flags.yml here)
+.bundle/
+
 # Ruby
 *.gem
 .ruby-gemset

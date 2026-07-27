@@ -20,6 +20,8 @@ x-runtime-env: &runtime-env
   USER: ${USER:-dev}
   WORKSPACE: /home/${USER:-dev}/wf
   MISE_DATA_DIR: /home/${USER:-dev}/.local/share/mise
+  # Trust bind-mounted mise.toml under the project root (root + app dirs).
+  MISE_TRUSTED_CONFIG_PATHS: /home/${USER:-dev}/wf
 
 x-service-env: &service-env
   <<: [*cache-env, *runtime-env]
@@ -66,11 +68,14 @@ services:
     environment:
       <<: *service-env
       PORT: "3000"
+      # Path prefix when reached via nginx (see nginx/nginx.conf)
+      RAILS_RELATIVE_URL_ROOT: /fred
     command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
     ports:
       - "3000:3000"
     healthcheck:
       <<: *healthcheck-defaults
+      # App still serves /up; nginx strips /fred before proxying
       test: ["CMD", "curl", "-f", "http://localhost:3000/up"]
 
   george:
@@ -79,9 +84,26 @@ services:
     environment:
       <<: *service-env
       PORT: "3001"
+      RAILS_RELATIVE_URL_ROOT: /george
     command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
     ports:
       - "3001:3001"
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "curl", "-f", "http://localhost:3001/up"]
+
+  # Path-based reverse proxy (pattern from partial/nginx, without oauth2).
+  # Home: http://localhost:8080/  → links to /fred/ and /george/
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/proxy.conf:/etc/nginx/proxy.conf:ro
+      - ./nginx/html:/usr/share/nginx/html:ro
+    depends_on:
+      fred:
+        condition: service_healthy
+      george:
+        condition: service_healthy

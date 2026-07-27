@@ -1,12 +1,18 @@
-# Pin tools for host and container parity (mise).
-# Classic Yarn 1.x (target project uses legacy yarn, not Berry).
-[tools]
-ruby = "4.0.5"
-node = "25.7.0"
-yarn = "1.22.22"
+# Pin tools for host and container parity with the docker-mise base image workflow.
+# Classic Yarn 1.x (not Berry).
+#
+# Ruby version: each Gemfile's `ruby "…"` directive (root, fred/, george/).
+# Do not pin ruby under [tools].
+
+min_version = "2025.8.0"
 
 [settings]
+# Prefer precompiled Ruby (jdx/ruby) for speed. Images also ship compile
+# toolchains so ruby-build / native gems still work when needed.
+ruby.compile = false
 idiomatic_version_file_enable_tools = ["ruby"]
 
-[settings.ruby]
-compile = false
+[tools]
+node = "25.7.0"
+# Yarn classic — workspaces + yarn.lock in this tree
+yarn = "1.22.22"

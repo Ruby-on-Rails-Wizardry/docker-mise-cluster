@@ -16,7 +16,7 @@ Clone this tree, copy it, or untar it into an existing umbrella project, then ed
 ```
 wf/
 ├── config/
-│   ├── apps.yml              # SSOT: apps + shared gems
+│   ├── apps.yml              # SSOT: apps + shared gems (+ url_root)
 │   ├── cache-layout.env      # SSOT: relative cache paths
 │   └── bundler-flags.yml     # SSOT: Bundler behavior (symlinked as .bundle/config)
 ├── bin/
@@ -25,6 +25,10 @@ wf/
 │   ├── compose               # docker compose with cache-layout.env
 │   ├── apps                  # read config/apps.yml
 │   └── docker-app            # container entry: prefer local caches
+├── nginx/
+│   ├── nginx.conf            # path routing + home page
+│   ├── proxy.conf            # shared reverse-proxy headers (no oauth)
+│   └── html/index.html       # / home with links to apps
 ├── .cache/                   # materialized caches (not committed)
 ├── fred/  george/            # demo apps (replace with submodules in real use)
 ├── Dockerfile                # Ubuntu 24.04 + dev user + mise
@@ -40,13 +44,27 @@ wf/
 bin/setup                 # install tools, warm gem/yarn caches, db:prepare
 bin/setup --docker-build  # also build image wf-dev:latest
 
-bin/compose up fred george
-# Fred   → http://localhost:3000
-# George → http://localhost:3001
+bin/compose up
+# Home   → http://localhost:8080/          (nginx; links to apps)
+# Fred   → http://localhost:8080/fred/
+# George → http://localhost:8080/george/
+# Direct ports (debug): fred :3000, george :3001
 
 # Shell in the image
 bin/compose --profile dev run --rm dev
 ```
+
+### Nginx path routing
+
+`nginx` is the front door (port **8080**). It is intentionally simpler than `partial/nginx`: same path-proxy idea, **no oauth2-proxy**.
+
+| Path | Backend | Notes |
+|------|---------|--------|
+| `/` | static `nginx/html/index.html` | Links to both apps |
+| `/fred/` | `fred:3000` | Prefix stripped; app has `RAILS_RELATIVE_URL_ROOT=/fred` |
+| `/george/` | `george:3001` | Same pattern with `/george` |
+
+Edit routing in `nginx/nginx.conf`. Keep `url_root` in `config/apps.yml` and `RAILS_RELATIVE_URL_ROOT` in `docker-compose.yml` aligned with those paths.
 
 Always use **`bin/compose`** (not plain `docker compose`) so `config/cache-layout.env` is loaded.
 
@@ -56,8 +74,8 @@ Always use **`bin/compose`** (not plain `docker compose`) so `config/cache-layou
 2. Edit **`config/apps.yml`** — names, paths, ports.
 3. Replace demo apps with **git submodules** (see `.gitmodules.example`).
 4. Update root **`package.json`** `workspaces` if JS workspaces change.
-5. Keep **`docker-compose.yml`** app services in sync with `apps.yml` (MVP: manual; generation later).
-6. Run `bin/setup` and `bin/compose up`.
+5. Keep **`docker-compose.yml`** app services (ports, `RAILS_RELATIVE_URL_ROOT`) and **`nginx/nginx.conf`** locations in sync with `apps.yml` (MVP: manual; generation later).
+6. Run `bin/setup` and `bin/compose up` (includes nginx on **8080**).
 
 ## Cache model
 
@@ -82,9 +100,9 @@ Host warms caches via `bin/setup`; containers use `bin/docker-app` and fall back
 
 ## MVP scope (this version)
 
-**In:** Ubuntu + mise image, compose, shared Bundler/Yarn caches, config apps list, demo fred/george.
+**In:** Ubuntu + mise image, compose, shared Bundler/Yarn caches, config apps list, demo fred/george, **nginx path routing** (`/`, `/fred/`, `/george/`).
 
-**Later:** nginx path routing, Postgres/Redis, oauth2-proxy, compose generation from `apps.yml`, Arch image variant, full weasily submodule set (ron/harry + shared gem).
+**Later:** Postgres/Redis, oauth2-proxy (see `partial/`), compose/nginx generation from `apps.yml`, Arch image variant, full weasily submodule set (ron/harry + shared gem).
 
 ## License
 
