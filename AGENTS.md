@@ -17,7 +17,7 @@ Reference trees (do not treat as the product):
 | App layout | **Git submodules** (demo apps vendored until replaced) |
 | Base image | **Ubuntu 24.04 LTS** + mise; layout: `/home/$USER` + **`$HOME/wf`** (`USER` / `DEV_UID` / `DEV_GID` build args) |
 | Yarn | **Classic 1.22.x** (not Berry) |
-| MVP services | Image + compose + shared gem/yarn caches + nginx path proxy |
+| MVP services | Image + compose + shared gem/yarn caches + nginx + Postgres + Redis |
 | Apply to weasily | New `wf/` tree; leave `partial/` as reference |
 
 ## Rules
@@ -31,6 +31,7 @@ Reference trees (do not treat as the product):
 7. Do not commit `.cache/**` contents (only `.gitkeep`).
 8. Do not introduce Yarn Berry in this template.
 9. Nginx is path routing only (see `partial/nginx` for oauth patterns). Do not reintroduce oauth2 here unless explicitly requested.
+10. Dev Postgres/Redis credentials stay in compose / `.env.example` only — never real secrets. Per-app DBs: `docker/postgres/init-databases.sql`; wire new apps in compose (`DATABASE_URL`, `REDIS_URL`) and that init script.
 
 ## Nginx (path proxy)
 
@@ -42,13 +43,27 @@ Reference trees (do not treat as the product):
 
 Config: `nginx/nginx.conf` + `nginx/proxy.conf`. Apps set `RAILS_RELATIVE_URL_ROOT` so asset/link helpers keep the path prefix.
 
+**depends_on direction:** each app → `nginx` + `db` + `redis`. Nginx does **not** depend on apps (one-app `compose up fred` still starts the proxy).
+
+## Data services
+
+| Service | Role |
+|---------|------|
+| `db` | Postgres 18; `fred_*` / `george_*` databases |
+| `redis` | Redis 8; `REDIS_URL` per app (DB index 0 / 1) |
+
+Apps depend on db/redis/nginx healthy before start. Host setup against Postgres needs `bin/compose up -d db` (or `--skip-db`).
+
 ## Common tasks
 
 ```bash
 bin/setup
 bin/setup --docker-build
-bin/compose up                 # fred + george + nginx
-# http://localhost:8080/  → home; /fred/ and /george/ via proxy
+bin/compose up -d db redis     # optional before host db:prepare
+bin/compose up fred            # nginx + db + redis + fred only
+bin/compose up george          # nginx + db + redis + george only
+bin/compose up fred george     # both apps + shared deps
+# http://localhost:8080/  → home; /fred/ and/or /george/ via proxy
 bin/compose --profile dev run --rm dev
 bin/apps yaml
 source bin/cache-env && cd fred && bin/rails console

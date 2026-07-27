@@ -46,7 +46,11 @@ when "yaml"
   apps.each do |a|
     root = a["url_root"]
     root_s = root ? " url_root=#{root}" : ""
-    puts "  - #{a.fetch("name")} path=#{a.fetch("path", a.fetch("name"))} port=#{a.fetch("port")}#{root_s}"
+    db = a["database"]
+    db_s = db ? " database=#{db}" : ""
+    redis = a["redis_db"]
+    redis_s = !redis.nil? ? " redis_db=#{redis}" : ""
+    puts "  - #{a.fetch("name")} path=#{a.fetch("path", a.fetch("name"))} port=#{a.fetch("port")}#{root_s}#{db_s}#{redis_s}"
   end
   puts "shared_gems:"
   if gems.empty?

@@ -192,6 +192,11 @@ GEM
     parser (3.3.11.1)
       ast (~> 2.4.1)
       racc
+    pg (1.6.3)
+    pg (1.6.3-aarch64-linux)
+    pg (1.6.3-aarch64-linux-musl)
+    pg (1.6.3-x86_64-linux)
+    pg (1.6.3-x86_64-linux-musl)
     pp (0.6.4)
       prettyprint
     prettyprint (0.2.0)
@@ -253,6 +258,10 @@ GEM
       prism (>= 1.6.0)
       rbs (>= 4.0.0)
       tsort
+    redis (5.4.1)
+      redis-client (>= 0.22.0)
+    redis-client (0.30.1)
+      connection_pool
     regexp_parser (2.12.0)
     reline (0.6.3)
       io-console (~> 0.5)
@@ -372,9 +381,11 @@ DEPENDENCIES
   image_processing (~> 1.2)
   importmap-rails
   kamal
+  pg (~> 1.5)
   propshaft
   puma (>= 5.0)
   rails (~> 8.1.3)
+  redis (>= 5.0)
   rubocop-rails-omakase
   solid_cable
   solid_cache
@@ -462,6 +473,11 @@ CHECKSUMS
   ostruct (0.6.3) sha256=95a2ed4a4bd1d190784e666b47b2d3f078e4a9efda2fccf18f84ddc6538ed912
   parallel (2.1.0) sha256=b35258865c2e31134c5ecb708beaaf6772adf9d5efae28e93e99260877b09356
   parser (3.3.11.1) sha256=d17ace7aabe3e72c3cc94043714be27cc6f852f104d81aa284c2281aecc65d54
+  pg (1.6.3) sha256=1388d0563e13d2758c1089e35e973a3249e955c659592d10e5b77c468f628a99
+  pg (1.6.3-aarch64-linux) sha256=0698ad563e02383c27510b76bf7d4cd2de19cd1d16a5013f375dd473e4be72ea
+  pg (1.6.3-aarch64-linux-musl) sha256=06a75f4ea04b05140146f2a10550b8e0d9f006a79cdaf8b5b130cde40e3ecc2c
+  pg (1.6.3-x86_64-linux) sha256=5d9e188c8f7a0295d162b7b88a768d8452a899977d44f3274d1946d67920ae8d
+  pg (1.6.3-x86_64-linux-musl) sha256=9c9c90d98c72f78eb04c0f55e9618fe55d1512128e411035fe229ff427864009
   pp (0.6.4) sha256=dfcb0fce700c41456265922884f9fe195d7fbb0674a3578e6c0f69588e82b570
   prettyprint (0.2.0) sha256=2bc9e15581a94742064a3cc8b0fb9d45aae3d03a1baa6ef80922627a0766f193
   prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
@@ -481,6 +497,8 @@ CHECKSUMS
   rake (13.4.2) sha256=cb825b2bd5f1f8e91ca37bddb4b9aaf345551b4731da62949be002fa89283701
   rbs (4.0.3) sha256=5a7bf70e2628549d9a1f44eae447b2cfe55968a9c60cfff52693a4bdcc020e14
   rdoc (8.0.0) sha256=03bf8c08a9639658855a0cfd77c0abca8325c227693f7f33f82957811348c469
+  redis (5.4.1) sha256=b5e675b57ad22b15c9bcc765d5ac26f60b675408af916d31527af9bd5a81faae
+  redis-client (0.30.1) sha256=5151bc5c7bbfe48623732cdae3b900d8a22dc691cc7cdfacfb351ac55116522d
   regexp_parser (2.12.0) sha256=35a916a1d63190ab5c9009457136ae5f3c0c7512d60291d0d1378ba18ce08ebb
   reline (0.6.3) sha256=1198b04973565b36ec0f11542ab3f5cfeeec34823f4e54cebde90968092b1835
   rubocop (1.88.2) sha256=8def251c90cd955feb4daa3edc0ab56893250c4ce90ef81e6c80c03f9a939bbf

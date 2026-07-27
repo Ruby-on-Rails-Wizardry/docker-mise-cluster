@@ -282,9 +282,10 @@ Host tools and download caches are ready.
   Yarn cache:     ${YARN_CACHE_FOLDER}
 
 Recommended flow:
+  bin/compose up -d db redis   # Postgres/Redis for host db:prepare
   bin/setup
-  bin/compose up
-  # nginx → http://localhost:8080/  ( /fred/ and /george/ )
+  bin/compose up fred          # or: george | fred george
+  # nginx → http://localhost:8080/  ( /fred/ and/or /george/ )
   # always use bin/compose so cache-layout.env is loaded
 
 Re-run anytime; the script is idempotent.
