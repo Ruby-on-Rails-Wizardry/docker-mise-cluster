@@ -67,14 +67,18 @@ Apps depend on db/redis/nginx healthy before start. Host setup against Postgres 
 ## Common tasks
 
 ```bash
-bin/setup
-bin/setup --docker-build
-bin/compose up -d db redis     # optional before host db:prepare
-bin/compose up fred            # nginx + db + redis + fred only
-bin/compose up george          # nginx + db + redis + george only
-bin/compose up fred george     # both apps + shared deps
+mise install                   # Task + node/yarn from mise.toml
+task setup                     # or bin/setup
+task setup -- --docker-build
+task db                        # optional: compose up -d db redis
+task up:fred                   # nginx + db + redis + fred only
+task up:george
+task up:all                    # both apps + shared deps
+task compose -- ps
 # http://localhost:8080/  → home; /fred/ and/or /george/ via proxy
-bin/compose --profile dev run --rm dev
-bin/apps yaml
+task shell:dev
+task apps
 source bin/cache-env && cd fred && bin/rails console
 ```
+
+`bin/*` remains the implementation; Task is optional host UX (same pattern as ubuntu-mise).

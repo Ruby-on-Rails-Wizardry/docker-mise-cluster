@@ -1,0 +1,91 @@
+# Host UX for docker-mise-cluster. Requires Task: https://taskfile.dev
+# Install via mise (see mise.toml):  mise install
+# bin/* implements the same commands without Task.
+#
+#   task setup
+#   task setup -- --docker-build
+#   task up -- fred
+#   task up -- george
+#   task up -- fred george
+#   task compose -- ps
+#   task apps
+
+version: "3"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  setup:
+    desc: "Host bootstrap + warm caches (task setup -- --docker-build)"
+    cmds:
+      - ./bin/setup {{.CLI_ARGS}}
+
+  compose:
+    desc: "Pass-through to bin/compose (task compose -- ps)"
+    cmds:
+      - ./bin/compose {{.CLI_ARGS}}
+
+  up:
+    desc: "bin/compose up (task up -- fred | george | fred george)"
+    interactive: true
+    cmds:
+      - ./bin/compose up {{.CLI_ARGS}}
+
+  up:fred:
+    desc: Bring up fred + nginx + db + redis
+    interactive: true
+    cmds:
+      - ./bin/compose up fred
+
+  up:george:
+    desc: Bring up george + nginx + db + redis
+    interactive: true
+    cmds:
+      - ./bin/compose up george
+
+  up:all:
+    desc: Bring up fred + george + shared deps
+    interactive: true
+    cmds:
+      - ./bin/compose up fred george
+
+  down:
+    desc: bin/compose down
+    cmds:
+      - ./bin/compose down {{.CLI_ARGS}}
+
+  build:
+    desc: Build the wf-dev image
+    cmds:
+      - ./bin/compose build {{.CLI_ARGS}}
+
+  apps:
+    desc: Show apps from config/apps.yml
+    cmds:
+      - ./bin/apps yaml
+
+  db:
+    desc: Start only Postgres + Redis
+    cmds:
+      - ./bin/compose up -d db redis
+
+  shell:dev:
+    desc: Interactive shell in the cluster image (compose profile dev)
+    interactive: true
+    cmds:
+      - ./bin/compose --profile dev run --rm dev
+
+  mise:install:
+    desc: Install tools from mise.toml (includes Task)
+    cmds:
+      - |
+        if command -v mise >/dev/null 2>&1; then
+          mise trust . 2>/dev/null || true
+          mise install
+        else
+          echo "error: mise not found" >&2
+          exit 1
+        fi

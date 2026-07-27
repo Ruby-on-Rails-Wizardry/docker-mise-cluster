@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [Taskfile.yml](Taskfile.yml) host UX (`task setup`, `task up:fred`, `task compose`, …); pin **Task 3.52.0** in [mise.toml](mise.toml)
+
 ### Changed
 
 - **fred** and **george** are independent git repos and **submodules** of this cluster ([fred](https://github.com/Ruby-on-Rails-Wizardry/fred), [george](https://github.com/Ruby-on-Rails-Wizardry/george)); clone with `--recurse-submodules`

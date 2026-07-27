@@ -16,3 +16,5 @@ idiomatic_version_file_enable_tools = ["ruby"]
 node = "25.7.0"
 # Yarn classic — workspaces + yarn.lock in this tree
 yarn = "1.22.22"
+# Task (go-task) — Taskfile.yml host UX; https://taskfile.dev
+task = "3.52.0"

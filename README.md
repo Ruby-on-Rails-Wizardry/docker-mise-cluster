@@ -62,23 +62,37 @@ wf/
 ├── .gitmodules
 ├── Dockerfile                # Ubuntu 24.04 + dev user + mise
 ├── docker-compose.yml
-├── mise.toml
+├── mise.toml                 # node/yarn/task pins
+├── Taskfile.yml              # task setup / up:fred / compose / …
 └── README.md
 ```
 
 ## Quick start
 
+[Task](https://taskfile.dev) is pinned in [mise.toml](mise.toml) (**3.52.0**). `bin/*` works without it.
+
 ```bash
 # From this directory (requires mise on host recommended, Docker optional)
-bin/setup                 # install tools, warm gem/yarn caches, db:prepare
-bin/setup --docker-build  # also build image wf-dev:latest
+mise install              # installs Task (+ node/yarn)
+task setup                # or: bin/setup
+task setup -- --docker-build
 
 # One app (pulls nginx + db + redis via depends_on)
-bin/compose up fred
-# or
-bin/compose up george
+task up:fred              # or: bin/compose up fred
+task up:george
 
 # Both apps (shared nginx + db + redis)
+task up:all               # or: bin/compose up fred george
+task compose -- ps
+```
+
+Without Task:
+
+```bash
+bin/setup
+bin/setup --docker-build
+bin/compose up fred
+bin/compose up george
 bin/compose up fred george
 
 # Home   → http://localhost:8080/          (nginx; links to apps)
