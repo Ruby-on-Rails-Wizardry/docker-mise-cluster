@@ -15,10 +15,24 @@ Reference trees (do not treat as the product):
 |----------|--------|
 | Product shape | **Template** — clone, copy, or untar into a project |
 | App layout | **Git submodules** (`fred`, `george` → independent repos) |
-| Base image | **Local [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise)** (`BASE_IMAGE`, default `ubuntu-mise:dev`) + thin cluster layer (Postgres client/libpq); layout: `/home/$USER` + project **`/work`** (`USER` / `DEV_UID` / `DEV_GID` build args). Build base first: `task ubuntu:build` from the docker-mise umbrella. |
+| Base image (dev) | **Local [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise)** (`BASE_IMAGE`, default `ubuntu-mise:dev`) + thin cluster layer (Postgres client/libpq); layout: `/home/$USER` + project **`/work`** + **`/cache`** volume (`USER` / `DEV_UID` / `DEV_GID` build args). Build base first: `task ubuntu:build` from the docker-mise umbrella. |
 | Yarn | **Classic 1.22.x** (not Berry) |
 | MVP services | Image + compose + shared gem/yarn caches + nginx + Postgres + Redis |
 | Apply to weasily | New `wf/` tree; leave `partial/` as reference |
+| **Mise install timing** | **Development:** `mise install` at **runtime** into **`/cache`** volume. **Production:** tools frozen at **image build**; server start only (no install/activate on boot). |
+| **Mise in production** | **Default: do not use mise** — keep official multi-stage language images (`ruby:*-slim` + bundle), with pin parity to Gemfile. **If mise is used:** **builder stage only** (BuildKit cache mounts OK); copy frozen binaries/app into a slim runtime; final image should not require the mise binary, shims, or `mise activate`. Never ship full ubuntu-mise as a prod base. |
+
+## Mise: development vs production
+
+| Context | `mise install` | Cache / layers | Runtime |
+|---------|----------------|----------------|---------|
+| **Development** (ubuntu-mise, cluster `wf-dev`, compose `fred`/`george`/`dev`) | **At container runtime** | Shared **`/cache`** volume (and host-warmed gem/yarn under `/work/.cache`) | `mise activate` + `mise install` as needed (`bin/docker-app`, `dev` shell) |
+| **Production** (app Dockerfiles / Kamal) — **default** | N/A (no mise) | Official base + gems/assets in image layers | Fixed process (Thruster/Puma). Pin Ruby via Dockerfile `ARG` matching Gemfile |
+| **Production** — **if mise is adopted** | **Builder stage only** (`RUN mise install`, BuildKit caches) | Downloads in builder cache; **copy-out** to runtime | Start server only. Prefer **no mise** in the final image; never install/activate on boot |
+
+**Why default off:** for single-Ruby Rails apps (fred/george today), official images are smaller, clearer, and simpler to operate. Build-time mise mainly helps multi-language pin parity; it is a **build tool**, not a runtime manager.
+
+Current **fred** / **george** production Dockerfiles use official `ruby:…-slim` multi-stage and **do not** use mise.
 
 ## Submodules (apps)
 
@@ -42,6 +56,7 @@ App code changes are committed **inside** `fred/` / `george/`, then the parent c
 8. Do not introduce Yarn Berry in this template.
 9. Nginx is path routing only (see `partial/nginx` for oauth patterns). Do not reintroduce oauth2 here unless explicitly requested.
 10. Dev Postgres/Redis credentials stay in compose / `.env.example` only — never real secrets. Per-app DBs: `docker/postgres/init-databases.sql`; wire new apps in compose (`DATABASE_URL`, `REDIS_URL`) and that init script.
+11. **Mise install timing:** development → **runtime** + `/cache`; production → **image build** only (see Decisions table). Do not bake language toolchains into the cluster **dev** image build; do not run `mise install` on production boot.
 
 ## Nginx (path proxy)
 

@@ -24,11 +24,14 @@ x-cache-env: &cache-env
   YARN_CACHE_FOLDER: /work/${CACHE_YARN_FOLDER:-.cache/yarn-cache}
 
 # Container login name (build + runtime). Defaults to host $USER, else "dev".
+# Dev: mise install at runtime into /cache (volume). Prod apps: install at image build only.
 x-runtime-env: &runtime-env
   HOME: /home/${USER:-dev}
   USER: ${USER:-dev}
   WORKSPACE: /work
-  MISE_DATA_DIR: /home/${USER:-dev}/.local/share/mise
+  CACHE_ROOT: /cache
+  MISE_DATA_DIR: /cache/mise
+  MISE_CACHE_DIR: /cache/mise-cache
   # Trust bind-mounted mise.toml under /work (root + app dirs). Matches ubuntu-mise.
   MISE_TRUSTED_CONFIG_PATHS: /work
 
@@ -81,6 +84,10 @@ x-app-base: &app-base
   volumes:
     # Whole cluster root (apps, .cache, node_modules, config) → /work
     - .:/work:cached
+    # Shared mise tool installs (runtime `mise install`; survives container recreate)
+    - type: volume
+      source: mise-cache
+      target: /cache
   stdin_open: true
   tty: true
 
@@ -198,3 +205,6 @@ services:
 
 volumes:
   pgdata:
+  # mise tool installs for dev runtime (`mise install` → MISE_DATA_DIR=/cache/mise)
+  mise-cache:
+    name: ${MISE_CACHE_VOLUME:-ubuntu-mise-cache}

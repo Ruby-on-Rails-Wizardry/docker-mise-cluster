@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Locked mise policy: **dev** = runtime `mise install` into `/cache`; **prod default** = no mise (official multi-stage images); **if prod uses mise** = builder-only, start server without install/activate ([AGENTS.md](AGENTS.md))
+- Cluster dev image no longer bakes language tools at build; `bin/docker-app` runs `mise install` at start; compose mounts `mise-cache` → `/cache`
+
 ### Fixed
 
 ### Security

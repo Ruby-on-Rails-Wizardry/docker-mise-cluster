@@ -9,7 +9,8 @@ Template starting point for a **multi-app Rails development cluster** with:
 - **Config-driven** app list (`config/apps.yml`)
 - **PostgreSQL** + **Redis** shared data services for all apps
 - **Git submodules** for independent app repos (**fred**, **george**) and optional shared gems
-- Layout: container user home at `/home/$USER` (default `dev`), project mount / WORKDIR at **`/work`** (same as ubuntu-mise)
+- Layout: home `/home/$USER`, project **`/work`**, mise tools at runtime into **`/cache`** volume (same as ubuntu-mise)
+- **Mise:** development installs tools at **runtime** (cached in `/cache`); production app images install at **build** only
 
 Clone with apps:
 

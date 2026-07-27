@@ -1,7 +1,15 @@
-# Thin multi-app cluster image on top of a local ubuntu-mise base.
+# Thin multi-app **development** image on top of a local ubuntu-mise base.
+#
+# Dev contract (locked):
+#   - mise is present in the base image
+#   - `mise install` runs at **container runtime** (see bin/docker-app), using
+#     the shared `/cache` volume for tool installs (MISE_DATA_DIR=/cache/mise)
+#   - Do **not** bake language toolchains into this image at build time
+#
+# Production apps (Kamal / app Dockerfiles): if they use mise at all,
+# `mise install` runs only at **image build** — never on boot.
 #
 # Base (default ubuntu-mise:dev) must already exist on the Docker host:
-#   # from docker-mise umbrella
 #   task ubuntu:build
 #   # or
 #   (cd ../ubuntu-mise && ./bin/build)
@@ -13,7 +21,6 @@
 #
 # Override the parent with:
 #   BASE_IMAGE=my/ubuntu-mise:dev bin/compose build
-#   # or ARG at build: docker build --build-arg BASE_IMAGE=…
 
 ARG BASE_IMAGE=ubuntu-mise:dev
 FROM ${BASE_IMAGE}
@@ -41,34 +48,21 @@ RUN chmod +x /tmp/setup-postgresql.sh \
     && rm /tmp/setup-postgresql.sh
 
 # Project mount / WORKDIR at /work (same contract as ubuntu-mise).
-# MISE_DATA_DIR stays under $HOME so bind-mounting /work does not hide installed tools.
-# Re-set HOME/PATH: base image baked HOME=/home/dev; USER may be host login (e.g. rob).
+# Keep mise data under /cache (named volume at runtime) so `mise install` in
+# bin/docker-app is cached across containers — not baked into the image layer.
+# Re-set HOME: base image may bake HOME=/home/dev; USER may be host login.
 ENV USER=${USER} \
     HOME=/home/${USER} \
     WORKSPACE=/work \
     MISE_TRUSTED_CONFIG_PATHS=/work \
-    MISE_DATA_DIR=/home/${USER}/.local/share/mise \
-    MISE_CONFIG_DIR=/home/${USER}/.config/mise \
-    MISE_CACHE_DIR=/home/${USER}/.cache/mise \
-    PATH=/home/${USER}/.local/bin:/home/${USER}/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    CACHE_ROOT=/cache \
+    MISE_DATA_DIR=/cache/mise \
+    MISE_CACHE_DIR=/cache/mise-cache \
+    PATH=/home/${USER}/.local/bin:/cache/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 USER ${USER}
 WORKDIR /work
 
-# Pre-install tools from cluster pins (Ruby from Gemfile via idiomatic files).
-# The bind mount at runtime replaces this directory; tool installs live in MISE_DATA_DIR.
-# Use absolute mise path — do not rely on ~ if HOME was stale in a prior layer.
-COPY --chown=${USER}:${USER} mise.toml Gemfile /work/
-
-RUN MISE="/home/${USER}/.local/bin/mise" \
-    && test -x "${MISE}" \
-    && "${MISE}" trust /work/mise.toml \
-    && "${MISE}" install \
-    && "${MISE}" reshim \
-    && ruby -v \
-    && node -v \
-    && yarn -v \
-    && gem install bundler --no-document
-
 # Keep the ubuntu-mise entrypoint (ensures /cache is writable when that volume is used).
+# Language tools: installed at runtime via bin/docker-app (`mise install` + /cache).
 CMD ["bash"]

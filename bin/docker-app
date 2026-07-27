@@ -15,11 +15,18 @@ if [[ ! -f "${CLUSTER_ROOT}/config/cache-layout.env" ]]; then
   CLUSTER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fi
 
-# Host bind-mount replaces the image's /work; app dirs have their own mise.toml.
+# Dev contract: language tools via mise at **runtime**, installed into /cache
+# (compose volume → MISE_DATA_DIR). Production images install at **build** only.
+# Host bind-mount replaces /work; app dirs have their own mise.toml.
 # Prefer MISE_TRUSTED_CONFIG_PATHS (compose/Dockerfile); trust is a fallback.
 if command -v mise >/dev/null 2>&1; then
   mise trust "${CLUSTER_ROOT}" 2>/dev/null || true
   mise trust . 2>/dev/null || true
+  eval "$(mise activate bash)" 2>/dev/null || true
+  echo "== ${APP_NAME}: mise install (runtime; cache MISE_DATA_DIR=${MISE_DATA_DIR:-/cache/mise})"
+  # Prefer project pins under /work (bind-mounted). Idempotent when /cache is warm.
+  (cd "${CLUSTER_ROOT}" && mise install) || mise install
+  mise reshim 2>/dev/null || true
   eval "$(mise activate bash)" 2>/dev/null || true
 fi
 
@@ -29,6 +36,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cache-env"
 echo "== ${APP_NAME}: BUNDLE_PATH=${BUNDLE_PATH}"
 echo "== ${APP_NAME}: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH}"
 echo "== ${APP_NAME}: YARN_CACHE_FOLDER=${YARN_CACHE_FOLDER}"
+echo "== ${APP_NAME}: ruby $(ruby -v 2>/dev/null || echo missing)"
 echo "== ${APP_NAME}: yarn $(yarn --version 2>/dev/null || echo unknown)"
 
 if bundle check >/dev/null 2>&1; then
