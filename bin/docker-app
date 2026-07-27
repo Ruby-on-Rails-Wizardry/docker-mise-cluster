@@ -39,6 +39,8 @@ else
   fi
 fi
 
+# Yarn is for JS workspaces/tests — not required to boot Rails. Never fail the
+# container solely because the offline mirror is incomplete (host can warm it).
 if [[ -f "${CLUSTER_ROOT}/package.json" ]] && [[ -f "${CLUSTER_ROOT}/yarn.lock" ]]; then
   if [[ ! -d "${CLUSTER_ROOT}/node_modules" ]]; then
     echo "== ${APP_NAME}: yarn install (prefer classic offline mirror)"
@@ -48,15 +50,62 @@ if [[ -f "${CLUSTER_ROOT}/package.json" ]] && [[ -f "${CLUSTER_ROOT}/yarn.lock" 
         echo "== ${APP_NAME}: offline mirror incomplete; trying --prefer-offline"
         if ! yarn install --frozen-lockfile --prefer-offline; then
           echo "== ${APP_NAME}: fetching remaining packages from network"
-          yarn install --frozen-lockfile
+          yarn install --frozen-lockfile || \
+            echo "== ${APP_NAME}: warning: yarn install failed; continuing (Rails does not need node_modules)" >&2
         fi
       fi
-    )
+    ) || echo "== ${APP_NAME}: warning: yarn install failed; continuing" >&2
   else
     echo "== ${APP_NAME}: node_modules present (host mount); skipping yarn install"
   fi
 fi
 
+# --- PostgreSQL (required in development) ------------------------------------
+# Compose sets DATABASE_URL per app (fred_development / george_development).
+# Fail early if we are not on postgresql after db:prepare.
+redact_url() {
+  # postgresql://user:pass@host:5432/db → postgresql://user:***@host:5432/db
+  sed -E 's#(://[^:/@]+:)[^@]+@#\1***@#' <<<"${1:-}"
+}
 
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  echo "== ${APP_NAME}: DATABASE_URL=$(redact_url "${DATABASE_URL}")"
+elif [[ -n "${POSTGRES_HOST:-}" ]]; then
+  echo "== ${APP_NAME}: POSTGRES_HOST=${POSTGRES_HOST} POSTGRES_USER=${POSTGRES_USER:-} (no DATABASE_URL)"
+else
+  echo "== ${APP_NAME}: warning: no DATABASE_URL or POSTGRES_HOST; database.yml host defaults apply" >&2
+fi
+
+wait_for_postgres() {
+  local attempts="${1:-30}"
+  local i
+  for ((i = 1; i <= attempts; i++)); do
+    if bin/rails runner 'ActiveRecord::Base.connection.execute("SELECT 1")' >/dev/null 2>&1; then
+      return 0
+    fi
+    echo "== ${APP_NAME}: waiting for PostgreSQL (${i}/${attempts})…"
+    sleep 2
+  done
+  echo "error: ${APP_NAME}: could not connect to PostgreSQL" >&2
+  echo "  DATABASE_URL=$(redact_url "${DATABASE_URL:-}")" >&2
+  echo "  POSTGRES_HOST=${POSTGRES_HOST:-} POSTGRES_USER=${POSTGRES_USER:-}" >&2
+  return 1
+}
+
+wait_for_postgres 30
+
+echo "== ${APP_NAME}: bin/rails db:prepare"
 bin/rails db:prepare
+
+bin/rails runner '
+  cfg = ActiveRecord::Base.connection_db_config
+  adapter = cfg.adapter.to_s
+  db = cfg.database.to_s
+  host = cfg.try(:host).to_s
+  puts "== '"${APP_NAME}"': ActiveRecord adapter=#{adapter} database=#{db} host=#{host}"
+  abort "error: expected postgresql adapter, got #{adapter.inspect}" unless adapter == "postgresql"
+  current = ActiveRecord::Base.connection.select_value("SELECT current_database()")
+  puts "== '"${APP_NAME}"': connected to PostgreSQL database=#{current}"
+'
+
 exec bin/rails server -b 0.0.0.0 -p "${PORT}"

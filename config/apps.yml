@@ -9,11 +9,15 @@ apps:
     path: fred
     port: 3000
     url_root: /fred            # nginx path prefix (RAILS_RELATIVE_URL_ROOT)
+    database: fred_development # Postgres DB on compose `db` (DATABASE_URL)
+    redis_db: 0                # REDIS_URL logical DB index
     # health: /up              # default /up (nginx strips url_root before proxy)
   - name: george
     path: george
     port: 3001
     url_root: /george
+    database: george_development
+    redis_db: 1
 
 # Shared path-gems mounted into the workspace (optional for MVP).
 # When present, bin/setup does not treat them as Rails apps unless listed under apps.

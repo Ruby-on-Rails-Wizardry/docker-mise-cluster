@@ -7,10 +7,14 @@ ruby "4.0.6"
 gem "rails", "~> 8.1.3"
 # The modern asset pipeline for Rails [https://github.com/rails/propshaft]
 gem "propshaft"
-# Use sqlite3 as the database for Active Record
+# PostgreSQL for development/test (compose `db`); sqlite3 kept for Kamal production sample
+gem "pg", "~> 1.5"
 gem "sqlite3", ">= 2.1"
+# Redis client (compose `redis`; REDIS_URL). Cable/cache still solid_* in this demo.
+gem "redis", ">= 5.0"
 # Use the Puma web server [https://github.com/puma/puma]
 gem "puma", ">= 5.0"
+
 # Use JavaScript with ESM import maps [https://github.com/rails/importmap-rails]
 gem "importmap-rails"
 # Hotwire's SPA-like page accelerator [https://turbo.hotwired.dev]

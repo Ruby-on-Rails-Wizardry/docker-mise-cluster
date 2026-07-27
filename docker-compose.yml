@@ -4,9 +4,18 @@
 # Always run via: bin/compose …   (injects that file for ${CACHE_*} interpolation)
 # App list SSOT: config/apps.yml  (keep compose services in sync for MVP)
 #
-# Prefer host-warmed caches: bin/setup && bin/compose up
+# Prefer host-warmed caches: bin/setup && bin/compose up fred
+#   (or: bin/compose up george | bin/compose up fred george)
 #
 # Project mount: $HOME/wf  →  /home/${USER}/wf  (WORKDIR)
+#
+# Dependency order (apps pull the rest via depends_on):
+#   db, redis, nginx  ← brought up with any app
+#   fred / george     ← pick one or both
+#
+# Data services (dev credentials only — not for production):
+#   db    → PostgreSQL 18  (fred_development, george_development, …)
+#   redis → Redis 8
 
 x-cache-env: &cache-env
 
@@ -23,8 +32,17 @@ x-runtime-env: &runtime-env
   # Trust bind-mounted mise.toml under the project root (root + app dirs).
   MISE_TRUSTED_CONFIG_PATHS: /home/${USER:-dev}/wf
 
+# Shared Postgres/Redis connection defaults for app services.
+# Override via .env (see .env.example). Values are intentionally simple for local dev.
+x-db-env: &db-env
+  POSTGRES_HOST: db
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: ${POSTGRES_USER:-cluster}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cluster}
+  REDIS_URL: redis://redis:6379/0
+
 x-service-env: &service-env
-  <<: [*cache-env, *runtime-env]
+  <<: [*cache-env, *runtime-env, *db-env]
 
 x-healthcheck: &healthcheck-defaults
   interval: 10s
@@ -32,68 +50,76 @@ x-healthcheck: &healthcheck-defaults
   retries: 12
   start_period: 90s
 
+# Shared by fred/george: data stores + front-door proxy.
+# Compose pulls these in automatically when you `up` an app service.
+x-app-depends: &app-depends
+  db:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  nginx:
+    condition: service_healthy
+
+# App container defaults (YAML anchor only — not a service).
+x-app-base: &app-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      USER: ${USER:-dev}
+      DEV_UID: ${DEV_UID:-1000}
+      DEV_GID: ${DEV_GID:-1000}
+      POSTGRESQL_VERSION: ${POSTGRESQL_VERSION:-18}
+  image: wf-dev:latest
+  user: ${USER:-dev}
+  working_dir: /home/${USER:-dev}/wf
+  environment:
+    <<: *service-env
+  volumes:
+    # Whole cluster root (apps, .cache, node_modules, config) → $HOME/wf
+    - .:/home/${USER:-dev}/wf:cached
+  stdin_open: true
+  tty: true
+
 services:
-  base: &base
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        USER: ${USER:-dev}
-        DEV_UID: ${DEV_UID:-1000}
-        DEV_GID: ${DEV_GID:-1000}
-        POSTGRESQL_VERSION: ${POSTGRESQL_VERSION:-18}
+  # --- Data stores -----------------------------------------------------------
 
-    image: wf-dev:latest
-    user: ${USER:-dev}
-    working_dir: /home/${USER:-dev}/wf
+  db:
+    image: postgres:${POSTGRESQL_VERSION:-18}
     environment:
-      <<: *service-env
+      POSTGRES_USER: ${POSTGRES_USER:-cluster}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cluster}
+      # Default DB for the superuser; per-app DBs from init script
+      POSTGRES_DB: postgres
     volumes:
-      # Whole cluster root (apps, .cache, node_modules, config) → $HOME/wf
-      - .:/home/${USER:-dev}/wf:cached
-    stdin_open: true
-    tty: true
-
-  # Interactive shell for general development / cache inspection
-  dev:
-    <<: *base
-    profiles: ["dev"]
-    command: ["bash", "-lc", "mise install && exec bash"]
-
-  # --- App services (ports/paths must match config/apps.yml) ---
-
-  fred:
-    <<: *base
-    working_dir: /home/${USER:-dev}/wf/fred
-    environment:
-      <<: *service-env
-      PORT: "3000"
-      # Path prefix when reached via nginx (see nginx/nginx.conf)
-      RAILS_RELATIVE_URL_ROOT: /fred
-    command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
+      # Postgres 18+ images expect the volume at /var/lib/postgresql (not .../data).
+      # See https://github.com/docker-library/postgres/pull/1259
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
     ports:
-      - "3000:3000"
+      - "${POSTGRES_PUBLISH_PORT:-5432}:5432"
     healthcheck:
-      <<: *healthcheck-defaults
-      # App still serves /up; nginx strips /fred before proxying
-      test: ["CMD", "curl", "-f", "http://localhost:3000/up"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d postgres"]
 
-  george:
-    <<: *base
-    working_dir: /home/${USER:-dev}/wf/george
-    environment:
-      <<: *service-env
-      PORT: "3001"
-      RAILS_RELATIVE_URL_ROOT: /george
-    command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
+  redis:
+    image: redis:${REDIS_VERSION:-8}-alpine
     ports:
-      - "3001:3001"
+      - "${REDIS_PUBLISH_PORT:-6379}:6379"
     healthcheck:
-      <<: *healthcheck-defaults
-      test: ["CMD", "curl", "-f", "http://localhost:3001/up"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+      test: ["CMD", "redis-cli", "ping"]
 
-  # Path-based reverse proxy (pattern from partial/nginx, without oauth2).
-  # Home: http://localhost:8080/  → links to /fred/ and /george/
+  # --- Front door (before apps so one-app `up` still gets a proxy) ------------
+  # Path routing; backends resolve at request time (missing app → 502, not nginx crash).
+  # Apps depend on nginx; nginx does not depend on apps.
+
   nginx:
     image: nginx:1.27-alpine
     ports:
@@ -102,8 +128,70 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/proxy.conf:/etc/nginx/proxy.conf:ro
       - ./nginx/html:/usr/share/nginx/html:ro
+    healthcheck:
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+      # busybox wget is in nginx:alpine
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+
+  # --- Optional interactive shell --------------------------------------------
+
+  dev:
+    <<: *app-base
+    profiles: ["dev"]
     depends_on:
-      fred:
+      db:
         condition: service_healthy
-      george:
+      redis:
         condition: service_healthy
+    command: ["bash", "-lc", "mise install && exec bash"]
+
+  # --- Apps (ports/paths must match config/apps.yml) -------------------------
+  # Run one or both; depends_on pulls nginx + db + redis.
+  #   bin/compose up fred
+  #   bin/compose up george
+  #   bin/compose up fred george
+
+  fred:
+    <<: *app-base
+    working_dir: /home/${USER:-dev}/wf/fred
+    environment:
+      <<: *service-env
+      PORT: "3000"
+      # Path prefix when reached via nginx (see nginx/nginx.conf)
+      RAILS_RELATIVE_URL_ROOT: /fred
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/fred_development
+      # App-specific Redis logical DB (0 = fred, 1 = george)
+      REDIS_URL: redis://redis:6379/0
+    command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
+    ports:
+      - "3000:3000"
+    depends_on:
+      <<: *app-depends
+    healthcheck:
+      <<: *healthcheck-defaults
+      # App still serves /up; nginx strips /fred before proxying
+      test: ["CMD", "curl", "-f", "http://localhost:3000/up"]
+
+  george:
+    <<: *app-base
+    working_dir: /home/${USER:-dev}/wf/george
+    environment:
+      <<: *service-env
+      PORT: "3001"
+      RAILS_RELATIVE_URL_ROOT: /george
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/george_development
+      REDIS_URL: redis://redis:6379/1
+    command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
+    ports:
+      - "3001:3001"
+    depends_on:
+      <<: *app-depends
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "curl", "-f", "http://localhost:3001/up"]
+
+volumes:
+  pgdata:

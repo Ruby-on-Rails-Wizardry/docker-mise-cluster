@@ -9,7 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Compose **Postgres 18** (`db`) and **Redis 8** (`redis`) with published ports 5432 / 6379
+- Per-app databases via `docker/postgres/init-databases.sql` (`fred_*`, `george_*`)
+- Fred/George: `pg` + `redis` gems; development/test `database.yml` for PostgreSQL; `DATABASE_URL` / `REDIS_URL` from compose
+- `bin/docker-app` waits for Postgres, runs `db:prepare`, and aborts unless ActiveRecord adapter is `postgresql`
+- `apps.yml` documents per-app `database` / `redis_db`
+
 ### Changed
+
+- MVP services now include shared data stores (not only nginx + app processes)
+- Yarn install failures no longer block Rails boot (JS is optional for the server process)
+- **Nginx first:** apps `depends_on` nginx (+ db/redis); nginx no longer waits for apps — `bin/compose up fred` (or `george`) brings only that app’s stack
 
 ### Fixed
 
