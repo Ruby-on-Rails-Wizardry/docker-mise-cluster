@@ -79,6 +79,20 @@ Config: `nginx/nginx.conf` + `nginx/proxy.conf`. Apps set `RAILS_RELATIVE_URL_RO
 
 Apps depend on db/redis/nginx healthy before start. Host setup against Postgres needs `bin/compose up -d db` (or `--skip-db`).
 
+### Reset one app database
+
+Shared Postgres; only the named app’s database is dropped/recreated (`config/apps.yml` → `database:`).
+
+```bash
+task db:reset:fred             # or: bin/db-reset fred
+task db:reset:george           # or: bin/db-reset george
+task db:reset -- fred george   # multiple
+bin/db-reset --docker fred     # force rails via compose
+bin/db-reset --host fred       # force host rails (after bin/setup)
+```
+
+`bin/setup --reset` still resets **all** apps during full host setup.
+
 ## Common tasks
 
 ```bash
@@ -86,6 +100,8 @@ mise install                   # Task + node/yarn from mise.toml
 task setup                     # or bin/setup
 task setup -- --docker-build
 task db                        # optional: compose up -d db redis
+task db:reset:fred             # drop/create/schema/seed one app DB
+task db:reset:george
 task up:fred                   # nginx + db + redis + fred only
 task up:george
 task up:all                    # both apps + shared deps

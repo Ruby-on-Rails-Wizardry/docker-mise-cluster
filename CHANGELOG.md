@@ -11,12 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Locked mise policy: **dev** = runtime `mise install` into `/cache`; **prod default** = no mise (official multi-stage images); **if prod uses mise** = builder-only, start server without install/activate ([AGENTS.md](AGENTS.md))
-- Cluster dev image no longer bakes language tools at build; `bin/docker-app` runs `mise install` at start; compose mounts `mise-cache` → `/cache`
-
 ### Fixed
 
 ### Security
+
+## [0.3.1] - 2026-07-27
+
+### Added
+
+- `bin/db-reset` + Task shorthands (`task db:reset:fred`, `task db:reset:george`, `task db:reset -- <apps>`) to reset one app’s Postgres database without full `bin/setup --reset`
+
+### Changed
+
+- Locked mise policy: **dev** = runtime `mise install` into `/cache`; **prod default** = no mise (official multi-stage images); **if prod uses mise** = builder-only, start server without install/activate ([AGENTS.md](AGENTS.md))
+- Cluster dev image no longer bakes language tools at build; `bin/docker-app` runs `mise install` at start; compose mounts `mise-cache` → `/cache`
 
 ## [0.3.0] - 2026-07-27
 
@@ -70,7 +78,8 @@ First tagged release of the multi-app Docker + mise cluster template.
 - Docker image build: copy root `Gemfile` so `mise install` installs Ruby (not only Node/Yarn)
 - Untrusted `fred/mise.toml` / `george/mise.toml` under the host bind mount
 
-[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/releases/tag/v0.2.0

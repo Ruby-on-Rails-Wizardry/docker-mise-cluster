@@ -48,6 +48,7 @@ wf/
 │   ├── cache-env             # export absolute BUNDLE_* / YARN_* paths
 │   ├── compose               # docker compose with cache-layout.env
 │   ├── apps                  # read config/apps.yml
+│   ├── db-reset              # reset one app’s Postgres DB (fred / george)
 │   └── docker-app            # container entry: prefer local caches
 ├── nginx/
 │   ├── nginx.conf            # path routing + home page
@@ -147,6 +148,14 @@ Apps receive:
 Development Active Record uses **PostgreSQL** (`pg` gem). Production sample configs still use multi-db SQLite for Kamal. Redis is available via `REDIS_URL` / the `redis` gem; demo apps still use solid_cache / async cable unless you wire Redis stores yourself.
 
 Host `bin/setup` `db:prepare` expects Postgres on **localhost:5432** — start `bin/compose up -d db redis` first, or use `--skip-db` and let containers run `db:prepare`.
+
+Reset **one** app’s development database (leaves the sibling app alone):
+
+```bash
+task db:reset:fred             # or: bin/db-reset fred
+task db:reset:george
+bin/db-reset --docker fred     # rails inside compose if host gems are not ready
+```
 
 ### Nginx path routing
 

@@ -84,6 +84,21 @@ tasks:
     cmds:
       - ./bin/compose up -d db redis
 
+  db:reset:
+    desc: "Reset app DB(s) — task db:reset -- fred | george | fred george"
+    cmds:
+      - ./bin/db-reset {{.CLI_ARGS}}
+
+  db:reset:fred:
+    desc: Reset fred_development (drop/create/schema/seed)
+    cmds:
+      - ./bin/db-reset fred
+
+  db:reset:george:
+    desc: Reset george_development (drop/create/schema/seed)
+    cmds:
+      - ./bin/db-reset george
+
   shell:dev:
     desc: Interactive shell in the cluster image (compose profile dev)
     interactive: true
