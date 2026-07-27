@@ -7,10 +7,19 @@ Template starting point for a **multi-app Rails development cluster** with:
 - Shared **Yarn 1** offline mirror + cache folder
 - **Config-driven** app list (`config/apps.yml`)
 - **PostgreSQL** + **Redis** shared data services for all apps
-- **Git submodules** for independent app (and shared gem) repos
+- **Git submodules** for independent app repos (**fred**, **george**) and optional shared gems
 - Layout: container user home at `/home/$USER` (default `dev`), project mount / WORKDIR at **`$HOME/wf`**
 
-Clone this tree, copy it, or untar it into an existing umbrella project, then edit `config/apps.yml` and submodule URLs.
+Clone with apps:
+
+```bash
+git clone --recurse-submodules -b master \
+  git@github.com:Ruby-on-Rails-Wizardry/docker-mise-cluster.git
+# or after a plain clone:
+git submodule update --init --recursive
+```
+
+Then edit `config/apps.yml` / `.gitmodules` when adopting into a real project.
 
 ## Layout
 
@@ -36,7 +45,9 @@ wf/
 │   └── postgres/
 │       └── init-databases.sql  # per-app DBs on first boot
 ├── .cache/                   # materialized caches (not committed)
-├── fred/  george/            # demo apps (replace with submodules in real use)
+├── fred/                     # submodule → Ruby-on-Rails-Wizardry/fred
+├── george/                   # submodule → Ruby-on-Rails-Wizardry/george
+├── .gitmodules
 ├── Dockerfile                # Ubuntu 24.04 + dev user + mise
 ├── docker-compose.yml
 ├── mise.toml

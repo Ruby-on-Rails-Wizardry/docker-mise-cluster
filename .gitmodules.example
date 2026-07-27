@@ -1,16 +1,22 @@
-# Example git submodule layout for real projects.
-# Copy to .gitmodules and adjust URLs, then:
-#   git submodule add <url> <path>
+# Example / documentation of app submodule layout.
+# The live file is `.gitmodules` (managed by `git submodule add`).
+#
+# Clone with apps:
+#   git clone --recurse-submodules git@github.com:Ruby-on-Rails-Wizardry/docker-mise-cluster.git
+#   # or after clone:
 #   git submodule update --init --recursive
 #
 # Keep paths in sync with config/apps.yml (and shared_gems).
 
 [submodule "fred"]
 	path = fred
-	url = git@git.example.com:example/fred.git
+	url = git@github.com:Ruby-on-Rails-Wizardry/fred.git
+	branch = master
 [submodule "george"]
 	path = george
-	url = git@git.example.com:example/george.git
+	url = git@github.com:Ruby-on-Rails-Wizardry/george.git
+	branch = master
 # [submodule "example_gem"]
 # 	path = example_gem
-# 	url = git@git.example.com:example/example_gem.git
+# 	url = git@github.com:example/example_gem.git
+# 	branch = master

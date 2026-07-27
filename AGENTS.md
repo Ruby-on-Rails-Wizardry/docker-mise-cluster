@@ -14,11 +14,21 @@ Reference trees (do not treat as the product):
 | Decision | Choice |
 |----------|--------|
 | Product shape | **Template** — clone, copy, or untar into a project |
-| App layout | **Git submodules** (demo apps vendored until replaced) |
+| App layout | **Git submodules** (`fred`, `george` → independent repos) |
 | Base image | **Ubuntu 24.04 LTS** + mise; layout: `/home/$USER` + **`$HOME/wf`** (`USER` / `DEV_UID` / `DEV_GID` build args) |
 | Yarn | **Classic 1.22.x** (not Berry) |
 | MVP services | Image + compose + shared gem/yarn caches + nginx + Postgres + Redis |
 | Apply to weasily | New `wf/` tree; leave `partial/` as reference |
+
+## Submodules (apps)
+
+| Path | Repo |
+|------|------|
+| `fred/` | `git@github.com:Ruby-on-Rails-Wizardry/fred.git` |
+| `george/` | `git@github.com:Ruby-on-Rails-Wizardry/george.git` |
+
+Clone: `git clone --recurse-submodules …` or `git submodule update --init --recursive`.  
+App code changes are committed **inside** `fred/` / `george/`, then the parent cluster pin is updated.
 
 ## Rules
 

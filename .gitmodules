@@ -1,0 +1,8 @@
+[submodule "fred"]
+	path = fred
+	url = git@github.com:Ruby-on-Rails-Wizardry/fred.git
+	branch = master
+[submodule "george"]
+	path = george
+	url = git@github.com:Ruby-on-Rails-Wizardry/george.git
+	branch = master

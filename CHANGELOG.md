@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **fred** and **george** are independent git repos and **submodules** of this cluster ([fred](https://github.com/Ruby-on-Rails-Wizardry/fred), [george](https://github.com/Ruby-on-Rails-Wizardry/george)); clone with `--recurse-submodules`
+
 ### Fixed
 
 ### Security
