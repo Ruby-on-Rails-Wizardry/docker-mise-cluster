@@ -19,6 +19,15 @@ git clone --recurse-submodules -b master \
 git submodule update --init --recursive
 ```
 
+Remotes and `.gitmodules` use **SSH**. If another environment must use **HTTPS** only, keep SSH in the repos and rewrite URLs there with git `url.*.insteadOf` (do not dual-commit URL flips). Full guide in the umbrella doc [docs/CLONE-HTTPS.md](../docs/CLONE-HTTPS.md) (when this tree is nested under [docker-mise](https://github.com/Ruby-on-Rails-Wizardry/docker-mise)), or apply the same pattern:
+
+```bash
+# HTTPS-only host/user — not on your normal SSH workstation
+git config --global url."https://github.com/".insteadOf "git@github.com:"
+git config --global url."https://gitlab.com/".insteadOf "git@gitlab.com:"
+git pull && git submodule sync --recursive && git submodule update --init --recursive
+```
+
 Then edit `config/apps.yml` / `.gitmodules` when adopting into a real project.
 
 ## Layout
