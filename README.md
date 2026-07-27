@@ -23,8 +23,9 @@ Remotes and `.gitmodules` use **SSH**. If another environment must use **HTTPS**
 
 ```bash
 # HTTPS-only host/user — not on your normal SSH workstation
-git config --global url."https://github.com/".insteadOf "git@github.com:"
-git config --global url."https://gitlab.com/".insteadOf "git@gitlab.com:"
+# --add stacks values; a second set without --add overwrites the same key
+git config --global --add url."https://github.com/".insteadOf "git@github.com:"
+git config --global --add url."https://gitlab.com/".insteadOf "git@gitlab.com:"
 git pull && git submodule sync --recursive && git submodule update --init --recursive
 ```
 
