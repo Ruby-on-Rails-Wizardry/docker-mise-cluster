@@ -15,7 +15,7 @@ Reference trees (do not treat as the product):
 |----------|--------|
 | Product shape | **Template** — clone, copy, or untar into a project |
 | App layout | **Git submodules** (`fred`, `george` → independent repos) |
-| Base image | **Ubuntu 24.04 LTS** + mise; layout: `/home/$USER` + **`$HOME/wf`** (`USER` / `DEV_UID` / `DEV_GID` build args) |
+| Base image | **Local [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise)** (`BASE_IMAGE`, default `ubuntu-mise:dev`) + thin cluster layer (Postgres client/libpq); layout: `/home/$USER` + project **`/work`** (`USER` / `DEV_UID` / `DEV_GID` build args). Build base first: `task ubuntu:build` from the docker-mise umbrella. |
 | Yarn | **Classic 1.22.x** (not Berry) |
 | MVP services | Image + compose + shared gem/yarn caches + nginx + Postgres + Redis |
 | Apply to weasily | New `wf/` tree; leave `partial/` as reference |
@@ -37,7 +37,7 @@ App code changes are committed **inside** `fred/` / `george/`, then the parent c
 3. Bundler flags only in **`config/bundler-flags.yml`** (symlinked as `.bundle/config`).
 4. Do **not** set `BUNDLE_APP_CONFIG` to the cluster root when running app Gemfiles.
 5. Prefer `bundle install --local` / yarn `--offline` before network.
-6. Image user defaults to **`dev`** (`USER` arg); project mount / WORKDIR is **`$HOME/wf`** (`WORKSPACE`).
+6. Image user defaults to **`dev`** (`USER` arg); project mount / WORKDIR is **`/work`** (`WORKSPACE`, same as ubuntu-mise).
 7. Do not commit `.cache/**` contents (only `.gitkeep`).
 8. Do not introduce Yarn Berry in this template.
 9. Nginx is path routing only (see `partial/nginx` for oauth patterns). Do not reintroduce oauth2 here unless explicitly requested.

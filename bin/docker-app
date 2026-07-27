@@ -9,11 +9,13 @@ set -euo pipefail
 PORT="${PORT:-3000}"
 APP_NAME="$(basename "$(pwd)")"
 
-# Cluster root: WORKSPACE ($HOME/wf) from compose / image env.
-CLUSTER_ROOT="${WORKSPACE:-${HOME:+${HOME}/wf}}"
-CLUSTER_ROOT="${CLUSTER_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+# Cluster root: WORKSPACE (/work) from compose / image env.
+CLUSTER_ROOT="${WORKSPACE:-/work}"
+if [[ ! -f "${CLUSTER_ROOT}/config/cache-layout.env" ]]; then
+  CLUSTER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
 
-# Host bind-mount replaces the image's /wf; app dirs have their own mise.toml.
+# Host bind-mount replaces the image's /work; app dirs have their own mise.toml.
 # Prefer MISE_TRUSTED_CONFIG_PATHS (compose/Dockerfile); trust is a fallback.
 if command -v mise >/dev/null 2>&1; then
   mise trust "${CLUSTER_ROOT}" 2>/dev/null || true

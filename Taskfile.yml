@@ -58,9 +58,21 @@ tasks:
       - ./bin/compose down {{.CLI_ARGS}}
 
   build:
-    desc: Build the wf-dev image
+    desc: "Build cluster image (thin layer on BASE_IMAGE, default ubuntu-mise:dev)"
     cmds:
-      - ./bin/compose build {{.CLI_ARGS}}
+      - |
+        set -euo pipefail
+        BASE_IMAGE="${BASE_IMAGE:-ubuntu-mise:dev}"
+        if ! docker image inspect "${BASE_IMAGE}" >/dev/null 2>&1; then
+          if [[ -f ../ubuntu-mise/bin/build ]]; then
+            echo "task: base ${BASE_IMAGE} missing — building via ../ubuntu-mise"
+            (cd ../ubuntu-mise && IMAGE="${BASE_IMAGE}" ./bin/build)
+          else
+            echo "error: base image ${BASE_IMAGE} missing; run task ubuntu:build or set UBUNTU_MISE_ROOT" >&2
+            exit 1
+          fi
+        fi
+        ./bin/compose build {{.CLI_ARGS}}
 
   apps:
     desc: Show apps from config/apps.yml

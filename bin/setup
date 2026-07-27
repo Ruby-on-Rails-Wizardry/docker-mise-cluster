@@ -9,12 +9,16 @@
 # Usage:
 #   bin/setup
 #   bin/setup --reset          # also reset app databases
-#   bin/setup --docker-build   # build the Ubuntu dev image after host setup
+#   bin/setup --docker-build   # ensure ubuntu-mise base + build cluster image
 #   bin/setup --skip-mise      # assume Ruby/Node/Yarn already on PATH
 #   bin/setup --skip-js        # skip yarn install / yarn cache warm
 #   bin/setup --skip-db        # skip rails db:prepare
 #   bin/setup --skip-apps      # only root gems + yarn (no per-app bundle/db)
 #   bin/setup --skip-cache     # install only; do not run bundle cache / package
+#
+# Docker image (fred/george/dev) is a thin layer on BASE_IMAGE (default
+# ubuntu-mise:dev). --docker-build builds that base from a sibling tree when
+# missing (../ubuntu-mise under the docker-mise umbrella, or UBUNTU_MISE_ROOT).
 
 set -euo pipefail
 
@@ -263,9 +267,68 @@ echo "  .cache/yarn       : ${yarn_count} classic offline-mirror tarballs"
 echo "  .cache/yarn-cache : classic yarn --cache-folder"
 echo "  node_modules      : $( [[ -d node_modules ]] && echo present || echo missing )"
 
+# Resolve local ubuntu-mise (or override) so fred/george can FROM it.
+find_ubuntu_mise_root() {
+  if [[ -n "${UBUNTU_MISE_ROOT:-}" && -f "${UBUNTU_MISE_ROOT}/Dockerfile" ]]; then
+    (cd "${UBUNTU_MISE_ROOT}" && pwd)
+    return 0
+  fi
+  # Nested under docker-mise umbrella: cluster/../ubuntu-mise
+  if [[ -f "${ROOT}/../ubuntu-mise/Dockerfile" ]]; then
+    (cd "${ROOT}/../ubuntu-mise" && pwd)
+    return 0
+  fi
+  return 1
+}
+
+ensure_base_image() {
+  local base="${BASE_IMAGE:-ubuntu-mise:dev}"
+  local sibling=""
+
+  if docker image inspect "${base}" >/dev/null 2>&1; then
+    echo "Base image present: ${base}"
+    return 0
+  fi
+
+  if sibling="$(find_ubuntu_mise_root)"; then
+    step "Building missing base image ${base} from ${sibling}"
+    (
+      cd "${sibling}"
+      export IMAGE="${base}"
+      export DEV_UID="${DEV_UID:-$(id -u)}"
+      export DEV_GID="${DEV_GID:-$(id -g)}"
+      if [[ -x ./bin/build ]]; then
+        run ./bin/build
+      else
+        echo "error: ${sibling}/bin/build not executable" >&2
+        exit 1
+      fi
+    )
+    return 0
+  fi
+
+  cat <<EOF >&2
+error: base image ${base} is not available locally, and no ubuntu-mise tree was found.
+
+  Build the base first, then re-run with --docker-build:
+    # docker-mise umbrella
+    task ubuntu:build
+    # or standalone ubuntu-mise clone
+    cd /path/to/ubuntu-mise && ./bin/build
+
+  Or point at a clone:
+    UBUNTU_MISE_ROOT=/path/to/ubuntu-mise bin/setup --docker-build
+
+  Or set a different parent:
+    BASE_IMAGE=my/ubuntu-mise:dev bin/setup --docker-build
+EOF
+  exit 1
+}
+
 if [[ "$DOCKER_BUILD" -eq 1 ]]; then
-  step "Building Docker image (wf-dev)"
+  step "Building Docker image (${CLUSTER_IMAGE:-wf-dev:latest}) on ${BASE_IMAGE:-ubuntu-mise:dev}"
   require_cmd docker
+  ensure_base_image
   run "${ROOT}/bin/compose" build
 fi
 
@@ -280,10 +343,12 @@ Host tools and download caches are ready.
   Gem downloads:  ${BUNDLE_CACHE_PATH}
   Yarn mirror:    ${YARN_OFFLINE_MIRROR}
   Yarn cache:     ${YARN_CACHE_FOLDER}
+  App image:      ${CLUSTER_IMAGE:-wf-dev:latest}  (FROM ${BASE_IMAGE:-ubuntu-mise:dev})
 
 Recommended flow:
+  task ubuntu:build            # local ubuntu-mise base (umbrella)
   bin/compose up -d db redis   # Postgres/Redis for host db:prepare
-  bin/setup
+  bin/setup --docker-build     # host caches + thin cluster image
   bin/compose up fred          # or: george | fred george
   # nginx → http://localhost:8080/  ( /fred/ and/or /george/ )
   # always use bin/compose so cache-layout.env is loaded

@@ -2,13 +2,14 @@
 
 Template starting point for a **multi-app Rails development cluster** with:
 
-- **Ubuntu 24.04 LTS** image + **mise** (Ruby / Node / classic **Yarn 1.22**)
+- **Local [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise)** base image (`ubuntu-mise:dev` by default) + thin cluster layer (PostgreSQL client / libpq)
+- **fred** and **george** (and the optional `dev` shell) share that image (`wf-dev:latest`)
 - Shared **Bundler** install + download caches across all apps
 - Shared **Yarn 1** offline mirror + cache folder
 - **Config-driven** app list (`config/apps.yml`)
 - **PostgreSQL** + **Redis** shared data services for all apps
 - **Git submodules** for independent app repos (**fred**, **george**) and optional shared gems
-- Layout: container user home at `/home/$USER` (default `dev`), project mount / WORKDIR at **`$HOME/wf`**
+- Layout: container user home at `/home/$USER` (default `dev`), project mount / WORKDIR at **`/work`** (same as ubuntu-mise)
 
 Clone with apps:
 
@@ -60,12 +61,24 @@ wf/
 ├── fred/                     # submodule → Ruby-on-Rails-Wizardry/fred
 ├── george/                   # submodule → Ruby-on-Rails-Wizardry/george
 ├── .gitmodules
-├── Dockerfile                # Ubuntu 24.04 + dev user + mise
-├── docker-compose.yml
+├── Dockerfile                # FROM ubuntu-mise:dev + Postgres client/libpq
+├── docker-compose.yml        # fred + george share CLUSTER_IMAGE (wf-dev)
 ├── mise.toml                 # node/yarn/task pins
 ├── Taskfile.yml              # task setup / up:fred / compose / …
 └── README.md
 ```
+
+## Base image (ubuntu-mise)
+
+**fred** and **george** run on a thin cluster image built `FROM` a **local** ubuntu-mise tag (default **`ubuntu-mise:dev`**). That parent must exist before `bin/compose build`:
+
+| Context | How to build the base |
+|---------|------------------------|
+| Nested under [docker-mise](https://github.com/Ruby-on-Rails-Wizardry/docker-mise) | `task ubuntu:build` (or `task cluster:build` auto-builds sibling `../ubuntu-mise` if missing) |
+| Standalone cluster clone | Clone/build [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise), or set `UBUNTU_MISE_ROOT=/path/to/ubuntu-mise` |
+| Custom tag | `BASE_IMAGE=my/ubuntu-mise:dev bin/compose build` |
+
+Overrides (see [`.env.example`](.env.example)): `BASE_IMAGE`, `CLUSTER_IMAGE` (default `wf-dev:latest`).
 
 ## Quick start
 
@@ -75,7 +88,7 @@ wf/
 # From this directory (requires mise on host recommended, Docker optional)
 mise install              # installs Task (+ node/yarn)
 task setup                # or: bin/setup
-task setup -- --docker-build
+task setup -- --docker-build   # ensures ubuntu-mise base + builds cluster image
 
 # One app (pulls nginx + db + redis via depends_on)
 task up:fred              # or: bin/compose up fred
@@ -89,6 +102,8 @@ task compose -- ps
 Without Task:
 
 ```bash
+# Build local ubuntu-mise first if needed (umbrella sibling or separate clone)
+(cd ../ubuntu-mise && ./bin/build)   # when nested under docker-mise
 bin/setup
 bin/setup --docker-build
 bin/compose up fred

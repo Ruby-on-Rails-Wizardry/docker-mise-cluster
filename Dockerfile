@@ -1,94 +1,74 @@
-# Ubuntu LTS development image for multi-app Rails clusters.
-# Layout: non-root user home at /home/$USER; project mount at $HOME/wf.
-# Tool versions come from mise.toml (Ruby / Node / classic Yarn 1.x).
+# Thin multi-app cluster image on top of a local ubuntu-mise base.
+#
+# Base (default ubuntu-mise:dev) must already exist on the Docker host:
+#   # from docker-mise umbrella
+#   task ubuntu:build
+#   # or
+#   (cd ../ubuntu-mise && ./bin/build)
+#
+# Then:
+#   bin/setup --docker-build
+#   # or
+#   bin/compose build
+#
+# Override the parent with:
+#   BASE_IMAGE=my/ubuntu-mise:dev bin/compose build
+#   # or ARG at build: docker build --build-arg BASE_IMAGE=…
 
-FROM ubuntu:24.04
+ARG BASE_IMAGE=ubuntu-mise:dev
+FROM ${BASE_IMAGE}
 
-# Container login name (default "dev"). Pair with DEV_UID / DEV_GID for bind mounts.
+# Parent image runs as the non-root user; packages and UID align need root.
+USER root
+
 ARG USER=dev
 ARG DEV_UID=1000
 ARG DEV_GID=1000
-# PostgreSQL major for client + libpq-dev (pg gem). Default: current latest stable.
 ARG POSTGRESQL_VERSION=18
-ARG MISE_VERSION=v2026.5.15
 ARG DEBIAN_FRONTEND=noninteractive
 
-
-# Image/user layout only. Bundler + Yarn project settings live in mounted config.
-# HOME / WORKSPACE / mise paths expand from USER at build time.
-ENV LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8 \
-    USER=${USER} \
-    MISE_DATA_DIR=/home/${USER}/.local/share/mise \
-    MISE_CONFIG_DIR=/home/${USER}/.config/mise \
-    MISE_CACHE_DIR=/home/${USER}/.cache/mise \
-    MISE_RUBY_COMPILE=false \
-    # Bind-mounted project mise.toml files (root + fred/ + george/) stay trusted
-    # without an interactive `mise trust` (same idea as ubuntu-mise /work).
-    MISE_TRUSTED_CONFIG_PATHS=/home/${USER}/wf \
-    PATH=/home/${USER}/.local/bin:/home/${USER}/.local/share/mise/shims:${PATH} \
-    HOME=/home/${USER} \
-    WORKSPACE=/home/${USER}/wf
-
-# Minimal base + build deps for native gem extensions and common tooling.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        ca-certificates \
-        curl \
-        git \
-        gnupg \
-        less \
-        libffi-dev \
-        libssl-dev \
-        libyaml-dev \
-        openssh-client \
-        pkg-config \
-        shared-mime-info \
-        sqlite3 \
-        libsqlite3-dev \
-        sudo \
-        tzdata \
-        unzip \
-        wget \
-        zlib1g-dev \
-        vim-tiny \
-    && rm -rf /var/lib/apt/lists/*
-
-# PostgreSQL client + libpq headers (for Rails pg gem). See docker/setup-postgresql.sh.
-COPY docker/setup-postgresql.sh /tmp/setup-postgresql.sh
-RUN chmod +x /tmp/setup-postgresql.sh \
-    && POSTGRESQL_VERSION="${POSTGRESQL_VERSION}" /tmp/setup-postgresql.sh \
-    && rm /tmp/setup-postgresql.sh
-
-# Non-root user (name / UID / GID overridable). See docker/setup-user.sh.
+# Align container user with host bind mounts; ensure /work exists.
+# Parent ubuntu-mise may still have ENV HOME=/home/dev — reset after rename.
 COPY docker/setup-user.sh /tmp/setup-user.sh
 RUN chmod +x /tmp/setup-user.sh \
     && USER="${USER}" DEV_UID="${DEV_UID}" DEV_GID="${DEV_GID}" /tmp/setup-user.sh \
     && rm /tmp/setup-user.sh
 
+# PostgreSQL client + libpq-dev for the Rails pg gem (not in plain ubuntu-mise).
+COPY docker/setup-postgresql.sh /tmp/setup-postgresql.sh
+RUN chmod +x /tmp/setup-postgresql.sh \
+    && POSTGRESQL_VERSION="${POSTGRESQL_VERSION}" /tmp/setup-postgresql.sh \
+    && rm /tmp/setup-postgresql.sh
+
+# Project mount / WORKDIR at /work (same contract as ubuntu-mise).
+# MISE_DATA_DIR stays under $HOME so bind-mounting /work does not hide installed tools.
+# Re-set HOME/PATH: base image baked HOME=/home/dev; USER may be host login (e.g. rob).
+ENV USER=${USER} \
+    HOME=/home/${USER} \
+    WORKSPACE=/work \
+    MISE_TRUSTED_CONFIG_PATHS=/work \
+    MISE_DATA_DIR=/home/${USER}/.local/share/mise \
+    MISE_CONFIG_DIR=/home/${USER}/.config/mise \
+    MISE_CACHE_DIR=/home/${USER}/.cache/mise \
+    PATH=/home/${USER}/.local/bin:/home/${USER}/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
 USER ${USER}
+WORKDIR /work
 
-WORKDIR /home/${USER}/wf
+# Pre-install tools from cluster pins (Ruby from Gemfile via idiomatic files).
+# The bind mount at runtime replaces this directory; tool installs live in MISE_DATA_DIR.
+# Use absolute mise path — do not rely on ~ if HOME was stale in a prior layer.
+COPY --chown=${USER}:${USER} mise.toml Gemfile /work/
 
-# Install mise (https://mise.jdx.dev) for the image user.
-RUN curl -fsSL https://mise.run | MISE_VERSION="${MISE_VERSION}" sh \
-    && echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc \
-    && echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bash_profile
-
-# Copy version pins first for better layer caching.
-# Ruby is not under [tools] in mise.toml — mise reads `ruby "…"` from Gemfile
-# (idiomatic_version_file_enable_tools). Gemfile must be present at install time.
-COPY --chown=${USER}:${USER} mise.toml Gemfile /home/${USER}/wf/
-
-# Trust project config and install Ruby (from Gemfile) + Node + Yarn 1.
-RUN ~/.local/bin/mise trust /home/${USER}/wf/mise.toml \
-    && ~/.local/bin/mise install \
-    && ~/.local/bin/mise reshim \
+RUN MISE="/home/${USER}/.local/bin/mise" \
+    && test -x "${MISE}" \
+    && "${MISE}" trust /work/mise.toml \
+    && "${MISE}" install \
+    && "${MISE}" reshim \
     && ruby -v \
     && node -v \
     && yarn -v \
     && gem install bundler --no-document
 
-# Default to an interactive shell; compose overrides command per service.
+# Keep the ubuntu-mise entrypoint (ensures /cache is writable when that volume is used).
 CMD ["bash"]

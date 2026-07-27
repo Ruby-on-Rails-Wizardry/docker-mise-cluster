@@ -12,11 +12,11 @@ _cache_env_main() {
   local root layout prefix
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-  # Prefer container workspace when this tree is mounted at $HOME/wf (or WORKSPACE).
+  # Prefer container workspace when this tree is mounted at /work (or WORKSPACE).
   if [[ -n "${WORKSPACE:-}" && -f "${WORKSPACE}/config/cache-layout.env" ]]; then
     root="${WORKSPACE}"
-  elif [[ -n "${HOME:-}" && -f "${HOME}/wf/config/cache-layout.env" ]]; then
-    root="${HOME}/wf"
+  elif [[ -f /work/config/cache-layout.env ]]; then
+    root="/work"
   fi
 
 

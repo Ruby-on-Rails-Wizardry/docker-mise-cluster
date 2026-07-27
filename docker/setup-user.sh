@@ -15,7 +15,8 @@ USER_NAME="${USER:-dev}"
 DEV_UID="${DEV_UID:-1000}"
 DEV_GID="${DEV_GID:-1000}"
 HOME_DIR="/home/${USER_NAME}"
-WORKSPACE_DIR="${HOME_DIR}/wf"
+# Project mount (compose bind-mounts the cluster root here). Same as ubuntu-mise.
+WORKSPACE_DIR="${WORKSPACE_DIR:-/work}"
 
 log() {
   printf 'setup-user: %s\n' "$*"
@@ -79,8 +80,9 @@ prepare_home_and_workspace() {
   local name="$1"
 
   log "ensuring ${HOME_DIR} and ${WORKSPACE_DIR}"
-  mkdir -p "${WORKSPACE_DIR}"
+  mkdir -p "${HOME_DIR}" "${WORKSPACE_DIR}"
   chown -R "${name}:${name}" "${HOME_DIR}"
+  chown "${name}:${name}" "${WORKSPACE_DIR}"
 }
 
 main() {

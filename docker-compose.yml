@@ -7,7 +7,7 @@
 # Prefer host-warmed caches: bin/setup && bin/compose up fred
 #   (or: bin/compose up george | bin/compose up fred george)
 #
-# Project mount: $HOME/wf  →  /home/${USER}/wf  (WORKDIR)
+# Project mount: cluster root → /work  (WORKDIR; same contract as ubuntu-mise)
 #
 # Dependency order (apps pull the rest via depends_on):
 #   db, redis, nginx  ← brought up with any app
@@ -19,18 +19,18 @@
 
 x-cache-env: &cache-env
 
-  BUNDLE_PATH: /home/${USER:-dev}/wf/${CACHE_BUNDLE:-.cache/bundle}
-  BUNDLE_CACHE_PATH: /home/${USER:-dev}/wf/${CACHE_RUBYGEMS:-.cache/rubygems}
-  YARN_CACHE_FOLDER: /home/${USER:-dev}/wf/${CACHE_YARN_FOLDER:-.cache/yarn-cache}
+  BUNDLE_PATH: /work/${CACHE_BUNDLE:-.cache/bundle}
+  BUNDLE_CACHE_PATH: /work/${CACHE_RUBYGEMS:-.cache/rubygems}
+  YARN_CACHE_FOLDER: /work/${CACHE_YARN_FOLDER:-.cache/yarn-cache}
 
 # Container login name (build + runtime). Defaults to host $USER, else "dev".
 x-runtime-env: &runtime-env
   HOME: /home/${USER:-dev}
   USER: ${USER:-dev}
-  WORKSPACE: /home/${USER:-dev}/wf
+  WORKSPACE: /work
   MISE_DATA_DIR: /home/${USER:-dev}/.local/share/mise
-  # Trust bind-mounted mise.toml under the project root (root + app dirs).
-  MISE_TRUSTED_CONFIG_PATHS: /home/${USER:-dev}/wf
+  # Trust bind-mounted mise.toml under /work (root + app dirs). Matches ubuntu-mise.
+  MISE_TRUSTED_CONFIG_PATHS: /work
 
 # Shared Postgres/Redis connection defaults for app services.
 # Override via .env (see .env.example). Values are intentionally simple for local dev.
@@ -61,23 +61,26 @@ x-app-depends: &app-depends
     condition: service_healthy
 
 # App container defaults (YAML anchor only — not a service).
+# Image is a thin layer on local ubuntu-mise (see Dockerfile BASE_IMAGE).
+# fred + george + dev share this image; build after: task ubuntu:build
 x-app-base: &app-base
   build:
     context: .
     dockerfile: Dockerfile
     args:
+      BASE_IMAGE: ${BASE_IMAGE:-ubuntu-mise:dev}
       USER: ${USER:-dev}
       DEV_UID: ${DEV_UID:-1000}
       DEV_GID: ${DEV_GID:-1000}
       POSTGRESQL_VERSION: ${POSTGRESQL_VERSION:-18}
-  image: wf-dev:latest
+  image: ${CLUSTER_IMAGE:-wf-dev:latest}
   user: ${USER:-dev}
-  working_dir: /home/${USER:-dev}/wf
+  working_dir: /work
   environment:
     <<: *service-env
   volumes:
-    # Whole cluster root (apps, .cache, node_modules, config) → $HOME/wf
-    - .:/home/${USER:-dev}/wf:cached
+    # Whole cluster root (apps, .cache, node_modules, config) → /work
+    - .:/work:cached
   stdin_open: true
   tty: true
 
@@ -156,7 +159,7 @@ services:
 
   fred:
     <<: *app-base
-    working_dir: /home/${USER:-dev}/wf/fred
+    working_dir: /work/fred
     environment:
       <<: *service-env
       PORT: "3000"
@@ -177,7 +180,7 @@ services:
 
   george:
     <<: *app-base
-    working_dir: /home/${USER:-dev}/wf/george
+    working_dir: /work/george
     environment:
       <<: *service-env
       PORT: "3001"
