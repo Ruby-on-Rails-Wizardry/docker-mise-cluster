@@ -15,6 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [0.5.0] - 2026-07-29
+
+### Added
+
+- Document production deploy topology: **two Kamal apps on one VPS**, hostname routing via kamal-proxy; cluster compose is **dev-only** ([AGENTS.md](AGENTS.md#production-deployment-kamal--not-compose))
+
+### Changed
+
+- Dockerfile: single early `COPY --chmod=755 docker/ /docker/` (keep scripts; no `/tmp` stage-and-rm)
+- Host TZ detection aligned with flavors (Linux / macOS / WSL-safe localtime resolve)
+- Compose services set `hostname` to match the service name (`db`, `redis`, `nginx`, `dev`, `fred`, `george`)
+- Leave `/var/lib/apt/lists` after PostgreSQL client install (reuse apt index)
+
+### Fixed
+
+### Security
+
 ## [0.3.1] - 2026-07-27
 
 ### Added
@@ -78,7 +95,8 @@ First tagged release of the multi-app Docker + mise cluster template.
 - Docker image build: copy root `Gemfile` so `mise install` installs Ruby (not only Node/Yarn)
 - Untrusted `fred/mise.toml` / `george/mise.toml` under the host bind mount
 
-[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.3.1...v0.5.0
 [0.3.1]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.2.0...v0.2.1

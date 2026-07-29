@@ -1,6 +1,8 @@
 # wf — multi-app Docker dev cluster (template)
 
-Template starting point for a **multi-app Rails development cluster** with:
+Template starting point for a **multi-app Rails development cluster** (local Docker Compose). **Production** deploys each app with **Kamal** on a VPS (hostname routing), not this compose file — see [AGENTS.md — Production deployment](AGENTS.md#production-deployment-kamal--not-compose).
+
+Includes:
 
 - **Local [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise)** base image (`ubuntu-mise:dev` by default) + thin cluster layer (PostgreSQL client / libpq)
 - **fred** and **george** (and the optional `dev` shell) share that image (`wf-dev:latest`)

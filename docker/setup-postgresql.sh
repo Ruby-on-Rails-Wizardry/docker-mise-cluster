@@ -82,10 +82,6 @@ install_client_and_dev() {
   fi
 }
 
-cleanup_apt() {
-  rm -rf /var/lib/apt/lists/*
-}
-
 main() {
   require_root
 
@@ -97,7 +93,7 @@ main() {
   log "POSTGRESQL_VERSION=${POSTGRESQL_VERSION}"
   add_pgdg_repo
   install_client_and_dev
-  cleanup_apt
+  # Leave /var/lib/apt/lists so later apt operations can reuse the index.
   log "done"
 }
 

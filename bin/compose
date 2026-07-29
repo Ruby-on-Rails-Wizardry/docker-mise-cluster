@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # docker compose wrapper: loads config/cache-layout.env for ${CACHE_*} interpolation.
+# Also exports TZ from the host (when unset) so app containers match host local time.
+#
+# Host contexts (same as *-mise/bin/lib.sh): native Linux, native macOS, WSL
+# with the project accessed inside the Linux distro — not native Windows paths.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -9,5 +13,49 @@ if [[ ! -f "${LAYOUT}" ]]; then
   echo "error: missing ${LAYOUT}" >&2
   exit 1
 fi
+
+# Resolve /etc/localtime → IANA zone (Linux, macOS, WSL). Avoid GNU-only readlink -f.
+_host_timezone_from_localtime() {
+  local target=""
+  if [[ ! -e /etc/localtime ]]; then
+    return 1
+  fi
+  if command -v realpath >/dev/null 2>&1; then
+    target="$(realpath /etc/localtime 2>/dev/null || true)"
+  fi
+  if [[ -z "${target}" ]]; then
+    target="$(readlink -f /etc/localtime 2>/dev/null || true)"
+  fi
+  if [[ -z "${target}" ]] && [[ -L /etc/localtime ]]; then
+    target="$(readlink /etc/localtime 2>/dev/null || true)"
+    if [[ -n "${target}" && "${target}" != /* ]]; then
+      target="/etc/${target}"
+    fi
+  fi
+  if [[ -z "${target}" ]] && command -v python3 >/dev/null 2>&1; then
+    target="$(
+      python3 -c 'import os; print(os.path.realpath("/etc/localtime"))' 2>/dev/null || true
+    )"
+  fi
+  if [[ "${target}" == *zoneinfo/* ]]; then
+    printf '%s\n' "${target##*zoneinfo/}"
+    return 0
+  fi
+  return 1
+}
+
+if [[ -z "${TZ:-}" ]]; then
+  if [[ -r /etc/timezone ]]; then
+    TZ="$(tr -d '[:space:]' </etc/timezone 2>/dev/null || true)"
+  fi
+  if [[ -z "${TZ:-}" ]] && command -v timedatectl >/dev/null 2>&1; then
+    TZ="$(timedatectl show -p Timezone --value 2>/dev/null || true)"
+  fi
+  if [[ -z "${TZ:-}" ]]; then
+    TZ="$(_host_timezone_from_localtime || true)"
+  fi
+  TZ="${TZ:-UTC}"
+fi
+export TZ
 
 exec docker compose --env-file "${LAYOUT}" "$@"

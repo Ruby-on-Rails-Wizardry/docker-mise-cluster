@@ -34,6 +34,8 @@ x-runtime-env: &runtime-env
   MISE_CACHE_DIR: /cache/mise-cache
   # Trust bind-mounted mise.toml under /work (root + app dirs). Matches ubuntu-mise.
   MISE_TRUSTED_CONFIG_PATHS: /work
+  # Host zone via bin/compose (export TZ=… to override); base image ships tzdata
+  TZ: ${TZ:-UTC}
 
 # Shared Postgres/Redis connection defaults for app services.
 # Override via .env (see .env.example). Values are intentionally simple for local dev.
@@ -95,6 +97,7 @@ services:
   # --- Data stores -----------------------------------------------------------
 
   db:
+    hostname: db
     image: postgres:${POSTGRESQL_VERSION:-18}
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-cluster}
@@ -116,6 +119,7 @@ services:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d postgres"]
 
   redis:
+    hostname: redis
     image: redis:${REDIS_VERSION:-8}-alpine
     ports:
       - "${REDIS_PUBLISH_PORT:-6379}:6379"
@@ -131,6 +135,7 @@ services:
   # Apps depend on nginx; nginx does not depend on apps.
 
   nginx:
+    hostname: nginx
     image: nginx:1.27-alpine
     ports:
       - "8080:8080"
@@ -150,6 +155,7 @@ services:
 
   dev:
     <<: *app-base
+    hostname: dev
     profiles: ["dev"]
     depends_on:
       db:
@@ -166,6 +172,7 @@ services:
 
   fred:
     <<: *app-base
+    hostname: fred
     working_dir: /work/fred
     environment:
       <<: *service-env
@@ -187,6 +194,7 @@ services:
 
   george:
     <<: *app-base
+    hostname: george
     working_dir: /work/george
     environment:
       <<: *service-env

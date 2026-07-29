@@ -34,18 +34,15 @@ ARG DEV_GID=1000
 ARG POSTGRESQL_VERSION=18
 ARG DEBIAN_FRONTEND=noninteractive
 
+# Setup scripts under /docker (kept for cache-friendly layers; not staged via /tmp).
+COPY --chmod=755 docker/ /docker/
+
 # Align container user with host bind mounts; ensure /work exists.
 # Parent ubuntu-mise may still have ENV HOME=/home/dev — reset after rename.
-COPY docker/setup-user.sh /tmp/setup-user.sh
-RUN chmod +x /tmp/setup-user.sh \
-    && USER="${USER}" DEV_UID="${DEV_UID}" DEV_GID="${DEV_GID}" /tmp/setup-user.sh \
-    && rm /tmp/setup-user.sh
+RUN USER="${USER}" DEV_UID="${DEV_UID}" DEV_GID="${DEV_GID}" /docker/setup-user.sh
 
 # PostgreSQL client + libpq-dev for the Rails pg gem (not in plain ubuntu-mise).
-COPY docker/setup-postgresql.sh /tmp/setup-postgresql.sh
-RUN chmod +x /tmp/setup-postgresql.sh \
-    && POSTGRESQL_VERSION="${POSTGRESQL_VERSION}" /tmp/setup-postgresql.sh \
-    && rm /tmp/setup-postgresql.sh
+RUN POSTGRESQL_VERSION="${POSTGRESQL_VERSION}" /docker/setup-postgresql.sh
 
 # Project mount / WORKDIR at /work (same contract as ubuntu-mise).
 # Keep mise data under /cache (named volume at runtime) so `mise install` in
