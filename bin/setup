@@ -9,16 +9,15 @@
 # Usage:
 #   bin/setup
 #   bin/setup --reset          # also reset app databases
-#   bin/setup --docker-build   # ensure ubuntu-mise base + build cluster image
+#   bin/setup --docker-build   # ensure prebuilt ubuntu-mise:dev (no cluster image)
 #   bin/setup --skip-mise      # assume Ruby/Node/Yarn already on PATH
 #   bin/setup --skip-js        # skip yarn install / yarn cache warm
 #   bin/setup --skip-db        # skip rails db:prepare
 #   bin/setup --skip-apps      # only root gems + yarn (no per-app bundle/db)
 #   bin/setup --skip-cache     # install only; do not run bundle cache / package
 #
-# Docker image (fred/george/dev) is a thin layer on BASE_IMAGE (default
-# ubuntu-mise:dev). --docker-build builds that base from a sibling tree when
-# missing (../ubuntu-mise under the docker-mise umbrella, or UBUNTU_MISE_ROOT).
+# Apps use prebuilt IMAGE (default ubuntu-mise:dev). --docker-build only ensures
+# that base exists (builds sibling ../ubuntu-mise when missing). No cluster layer.
 
 set -euo pipefail
 
@@ -325,11 +324,18 @@ EOF
   exit 1
 }
 
+# Always ensure base image when --docker-build; also soft-check otherwise via compose.
 if [[ "$DOCKER_BUILD" -eq 1 ]]; then
-  step "Building Docker image (${CLUSTER_IMAGE:-wf-dev:latest}) on ${BASE_IMAGE:-ubuntu-mise:dev}"
+  step "Ensuring prebuilt base image (${IMAGE:-ubuntu-mise:dev})"
   require_cmd docker
-  ensure_base_image
-  run "${ROOT}/bin/compose" build
+  # Prefer lib.sh ensure when available
+  if [[ -f "${ROOT}/bin/lib.sh" ]]; then
+    # shellcheck source=lib.sh
+    source "${ROOT}/bin/lib.sh"
+    ensure_image
+  else
+    ensure_base_image
+  fi
 fi
 
 step "Setup complete"
@@ -343,15 +349,15 @@ Host tools and download caches are ready.
   Gem downloads:  ${BUNDLE_CACHE_PATH}
   Yarn mirror:    ${YARN_OFFLINE_MIRROR}
   Yarn cache:     ${YARN_CACHE_FOLDER}
-  App image:      ${CLUSTER_IMAGE:-wf-dev:latest}  (FROM ${BASE_IMAGE:-ubuntu-mise:dev})
+  App image:      ${IMAGE:-ubuntu-mise:dev}  (prebuilt; pull_policy: never)
 
 Recommended flow:
-  task ubuntu:build            # local ubuntu-mise base (umbrella)
-  bin/compose up -d db redis   # Postgres/Redis for host db:prepare
-  bin/setup --docker-build     # host caches + thin cluster image
-  bin/compose up fred          # or: george | fred george
+  cd ../ubuntu-mise && task build   # or: task setup -- --docker-build
+  bin/compose up -d db redis        # Postgres/Redis for host db:prepare
+  bin/setup                         # host caches + per-app gems
+  bin/compose up fred               # or: george | fred george
   # nginx → http://localhost:8080/  ( /fred/ and/or /george/ )
-  # always use bin/compose so cache-layout.env is loaded
+  # always use bin/compose so .env + cache-layout.env load
 
 Re-run anytime; the script is idempotent.
 EOF

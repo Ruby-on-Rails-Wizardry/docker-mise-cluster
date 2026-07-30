@@ -1,26 +1,16 @@
-# Thin multi-app **development** image on top of a local ubuntu-mise base.
+# OPTIONAL thin multi-app development image on ubuntu-mise.
 #
-# Dev contract (locked):
-#   - mise is present in the base image
-#   - `mise install` runs at **container runtime** (see bin/docker-app), using
-#     the shared `/cache` volume for tool installs (MISE_DATA_DIR=/cache/mise)
+# Default cluster compose uses **prebuilt ubuntu-mise:dev** directly
+# (docker-compose.yml pull_policy: never) — you do **not** need this Dockerfile.
+#
+# Keep this file only if you need an extra package layer on top of the base.
+# Prefer extending ubuntu-mise itself when possible.
+#
+# Dev contract when used:
+#   - mise install at **container runtime** into `/cache` (see bin/docker-app)
 #   - Do **not** bake language toolchains into this image at build time
 #
-# Production apps (Kamal / app Dockerfiles): if they use mise at all,
-# `mise install` runs only at **image build** — never on boot.
-#
-# Base (default ubuntu-mise:dev) must already exist on the Docker host:
-#   task ubuntu:build
-#   # or
-#   (cd ../ubuntu-mise && ./bin/build)
-#
-# Then:
-#   bin/setup --docker-build
-#   # or
-#   bin/compose build
-#
-# Override the parent with:
-#   BASE_IMAGE=my/ubuntu-mise:dev bin/compose build
+# Production apps (Kamal / app Dockerfiles): no mise on boot.
 
 ARG BASE_IMAGE=ubuntu-mise:dev
 FROM ${BASE_IMAGE}

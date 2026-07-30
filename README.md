@@ -4,15 +4,15 @@ Template starting point for a **multi-app Rails development cluster** (local Doc
 
 Includes:
 
-- **Local [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise)** base image (`ubuntu-mise:dev` by default) + thin cluster layer (PostgreSQL client / libpq)
-- **fred** and **george** (and the optional `dev` shell) share that image (`wf-dev:latest`)
+- **Prebuilt [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise)** (`ubuntu-mise:dev`, `pull_policy: never`) for **fred**, **george**, and optional **dev** — no cluster image build
+- **Host UX** like [ubuntu-sample](../ubuntu-sample/): `.mise.env` (`POSTGRESQL_VERSION=18`), Task + mise tasks at cluster root **and** in each app
 - Shared **Bundler** install + download caches across all apps
 - Shared **Yarn 1** offline mirror + cache folder
+- **nginx** path routing (`/fred/`, `/george/`) + **PostgreSQL** + **Redis**
 - **Config-driven** app list (`config/apps.yml`)
-- **PostgreSQL** + **Redis** shared data services for all apps
-- **Git submodules** for independent app repos (**fred**, **george**) and optional shared gems
-- Layout: home `/home/$USER`, project **`/work`**, mise tools at runtime into **`/cache`** volume (same as ubuntu-mise)
-- **Mise:** development installs tools at **runtime** (cached in `/cache`); production app images install at **build** only
+- **Git submodules** for independent app repos (**fred**, **george**)
+- Layout: project **`/work`**, tools at runtime into shared **`/cache`** volume (`ubuntu-mise-cache`)
+- **Mise:** development installs at **runtime** into `/cache`; production app images install at **build** only
 
 Clone with apps:
 
@@ -40,73 +40,64 @@ Then edit `config/apps.yml` / `.gitmodules` when adopting into a real project.
 ## Layout
 
 ```
-wf/
+cluster/
+├── .mise.env                 # POSTGRESQL_VERSION, IMAGE, CACHE_VOLUME
 ├── config/
 │   ├── apps.yml              # SSOT: apps + shared gems (+ url_root)
 │   ├── cache-layout.env      # SSOT: relative cache paths
 │   └── bundler-flags.yml     # SSOT: Bundler behavior (symlinked as .bundle/config)
 ├── bin/
+│   ├── lib.sh / mise-host-env.sh / config / doctor
 │   ├── setup                 # host bootstrap + warm caches
-│   ├── cache-env             # export absolute BUNDLE_* / YARN_* paths
-│   ├── compose               # docker compose with cache-layout.env
-│   ├── apps                  # read config/apps.yml
-│   ├── db-reset              # reset one app’s Postgres DB (fred / george)
-│   └── docker-app            # container entry: prefer local caches
-├── nginx/
-│   ├── nginx.conf            # path routing + home page
-│   ├── proxy.conf            # shared reverse-proxy headers (no oauth)
-│   └── html/index.html       # / home with links to apps
-├── docker/
-│   ├── setup-postgresql.sh   # PGDG client + libpq in the app image
-│   ├── setup-user.sh
-│   └── postgres/
-│       └── init-databases.sql  # per-app DBs on first boot
-├── .cache/                   # materialized caches (not committed)
-├── fred/                     # submodule → Ruby-on-Rails-Wizardry/fred
-├── george/                   # submodule → Ruby-on-Rails-Wizardry/george
-├── .gitmodules
-├── Dockerfile                # FROM ubuntu-mise:dev + Postgres client/libpq
-├── docker-compose.yml        # fred + george share CLUSTER_IMAGE (wf-dev)
-├── mise.toml                 # node/yarn/task pins
-├── Taskfile.yml              # task setup / up:fred / compose / …
+│   ├── compose               # .env + cache-layout + ensure ubuntu-mise:dev
+│   ├── apps / db-reset / docker-app
+│   └── cache-ensure / cache-reset
+├── nginx/                    # path routing + home page
+├── docker/postgres/          # per-app DB init
+├── fred/                     # submodule — Task/mise like ubuntu-sample
+├── george/                   # submodule — Task/mise like ubuntu-sample
+├── docker-compose.yml        # prebuilt ubuntu-mise:dev + nginx + db + redis
+├── Dockerfile                # optional thin layer (not used by default compose)
+├── mise.toml / Taskfile.yml  # multi-app host UX
 └── README.md
+```
+
+## Quick start
+
+```bash
+cd ../ubuntu-mise && task build && cd -
+mise install && task doctor
+task setup
+task up:fred          # or: task up:george | task up:all
+# http://localhost:8080/fred/   (and /george/)
+# direct: http://localhost:3000 / 3001
+```
+
+App-scoped Task (same shape as ubuntu-sample):
+
+```bash
+task fred -- setup
+task fred -- shell
+task george -- doctor
 ```
 
 ## Base image (ubuntu-mise)
 
-**fred** and **george** run on a thin cluster image built `FROM` a **local** ubuntu-mise tag (default **`ubuntu-mise:dev`**). That parent must exist before `bin/compose build`:
+**fred** and **george** run the **prebuilt** **`ubuntu-mise:dev`** image (`pull_policy: never`). No cluster image layer.
 
-| Context | How to build the base |
-|---------|------------------------|
-| Nested under [docker-mise](https://github.com/Ruby-on-Rails-Wizardry/docker-mise) | `task ubuntu:build` (or `task cluster:build` auto-builds sibling `../ubuntu-mise` if missing) |
-| Standalone cluster clone | Clone/build [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise), or set `UBUNTU_MISE_ROOT=/path/to/ubuntu-mise` |
-| Custom tag | `BASE_IMAGE=my/ubuntu-mise:dev bin/compose build` |
+| Context | How to get the base |
+|---------|---------------------|
+| Nested under [docker-mise](https://github.com/Ruby-on-Rails-Wizardry/docker-mise) | `cd ../ubuntu-mise && task build` or `task ubuntu:build` from umbrella |
+| Standalone cluster clone | Build [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise), or `UBUNTU_MISE_ROOT=/path/to/ubuntu-mise task setup -- --docker-build` |
+| Custom tag | `IMAGE=my/ubuntu-mise:dev` (must exist locally) |
 
-Overrides (see [`.env.example`](.env.example)): `BASE_IMAGE`, `CLUSTER_IMAGE` (default `wf-dev:latest`).
+Shared `/cache` volume: **`ubuntu-mise-cache`** (same default as ubuntu-mise / ubuntu-sample). PostgreSQL major for compose `db` and base client parity: **`.mise.env`** → `POSTGRESQL_VERSION=18`.
 
-## Quick start
-
-[Task](https://taskfile.dev) is pinned in [mise.toml](mise.toml) (**3.52.0**). `bin/*` works without it.
-
-```bash
-# From this directory (requires mise on host recommended, Docker optional)
-mise install              # installs Task (+ node/yarn)
-task setup                # or: bin/setup
-task setup -- --docker-build   # ensures ubuntu-mise base + builds cluster image
-
-# One app (pulls nginx + db + redis via depends_on)
-task up:fred              # or: bin/compose up fred
-task up:george
-
-# Both apps (shared nginx + db + redis)
-task up:all               # or: bin/compose up fred george
-task compose -- ps
-```
+Overrides: [`.env.example`](.env.example), [`.mise.env`](.mise.env).
 
 Without Task:
 
 ```bash
-# Build local ubuntu-mise first if needed (umbrella sibling or separate clone)
 (cd ../ubuntu-mise && ./bin/build)   # when nested under docker-mise
 bin/setup
 bin/setup --docker-build

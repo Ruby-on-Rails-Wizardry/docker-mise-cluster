@@ -64,3 +64,7 @@ spec/examples.txt
 # Ruby
 *.gem
 .ruby-gemset
+
+# Optional machine overrides (committed defaults live in .mise.env)
+.mise.env.local
+.task/

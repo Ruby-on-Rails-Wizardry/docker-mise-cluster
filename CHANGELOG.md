@@ -15,6 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [0.6.0] - 2026-07-30
+
+### Added
+
+- Cluster host UX aligned with ubuntu-sample: `.mise.env` (`POSTGRESQL_VERSION=18`, `IMAGE=ubuntu-mise:dev`), `bin/lib.sh`, `bin/mise-host-env.sh`, `bin/config` / `doctor` / cache helpers
+- Expanded Taskfile + mise tasks for multi-app up (`up:fred`, `up:george`, `up:all`), nginx-aware doctor, and app-scoped `task fred -- …` / `task george -- …`
+
+### Changed
+
+- Dev apps use **prebuilt `ubuntu-mise:dev` only** (`pull_policy: never`) — no cluster image build layer for fred/george/dev
+- Shared `/cache` volume defaults to **`ubuntu-mise-cache`** (same name as ubuntu-mise)
+- `bin/compose` writes `.env` (IMAGE, POSTGRESQL_VERSION, IMAGE_USER, …) and ensures the base image exists
+
+### Fixed
+
+### Security
+
+
 ## [0.5.0] - 2026-07-29
 
 ### Added

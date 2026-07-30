@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Host / Docker / base image / apps / nginx config sanity.
+set -euo pipefail
+# shellcheck source=lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+
+print_config
+echo
+printf '=== %s doctor ===\n' "${CLUSTER}"
+
+fail=0
+warn=0
+
+if command -v docker >/dev/null 2>&1; then
+  printf 'OK   docker on PATH\n'
+else
+  printf 'FAIL docker not on PATH\n'
+  fail=1
+fi
+
+if docker info >/dev/null 2>&1; then
+  printf 'OK   docker daemon\n'
+else
+  printf 'FAIL docker daemon not reachable\n'
+  fail=1
+fi
+
+if command -v task >/dev/null 2>&1; then
+  printf 'OK   task on PATH (%s)\n' "$(task --version 2>/dev/null | head -1)"
+else
+  printf 'WARN task not on PATH (mise install from this directory)\n'
+  warn=1
+fi
+
+if command -v mise >/dev/null 2>&1; then
+  printf 'OK   mise on PATH (%s)\n' "$(mise --version 2>/dev/null | head -1)"
+else
+  printf 'WARN mise not on PATH\n'
+  warn=1
+fi
+
+if image_exists; then
+  printf 'OK   base image %s\n' "${IMAGE}"
+else
+  printf 'WARN base image %s missing — cd ../ubuntu-mise && task build\n' "${IMAGE}"
+  warn=1
+fi
+
+if docker volume inspect "${CACHE_VOLUME}" >/dev/null 2>&1; then
+  printf 'OK   volume %s\n' "${CACHE_VOLUME}"
+else
+  printf 'WARN volume %s missing (created on first bin/compose)\n' "${CACHE_VOLUME}"
+  warn=1
+fi
+
+for app in fred george; do
+  if [[ -f "${ROOT}/${app}/Gemfile" ]]; then
+    printf 'OK   app %s (Gemfile present)\n' "${app}"
+  else
+    printf 'WARN app %s missing (git submodule update --init %s)\n' "${app}" "${app}"
+    warn=1
+  fi
+done
+
+if [[ -f "${ROOT}/nginx/nginx.conf" ]]; then
+  printf 'OK   nginx/nginx.conf\n'
+else
+  printf 'FAIL nginx/nginx.conf missing\n'
+  fail=1
+fi
+
+printf 'INFO POSTGRESQL_VERSION=%s (db image + base client parity)\n' "${POSTGRESQL_VERSION:-}"
+printf 'INFO front door: http://localhost:8080/  (/fred/ /george/)\n'
+
+if [[ "${fail}" -ne 0 ]]; then
+  log "doctor: failed"
+  exit 1
+fi
+if [[ "${warn}" -ne 0 ]]; then
+  log "doctor: ready with warnings"
+  exit 0
+fi
+log "doctor: ready"

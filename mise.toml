@@ -1,20 +1,93 @@
-# Pin tools for host and container parity with the docker-mise base image workflow.
-# Classic Yarn 1.x (not Berry).
-#
-# Ruby version: each Gemfile's `ruby "…"` directive (root, fred/, george/).
-# Do not pin ruby under [tools].
+# Host UX + tool pins for docker-mise-cluster (multi-app dev on ubuntu-mise:dev).
+# Ruby: each app's Gemfile `ruby "…"` (fred/, george/) — no pin under [tools].
 
 min_version = "2025.8.0"
 
+# Project defaults + host identity (see .mise.env, bin/mise-host-env.sh).
+[env]
+_.file = ".mise.env"
+_.source = "./bin/mise-host-env.sh"
+
 [settings]
-# Prefer precompiled Ruby (jdx/ruby) for speed. Images also ship compile
-# toolchains so ruby-build / native gems still work when needed.
+# Match ubuntu-mise (glibc precompiled Ruby).
 ruby.compile = false
 idiomatic_version_file_enable_tools = ["ruby"]
 
 [tools]
-node = "25.7.0"
-# Yarn classic — workspaces + yarn.lock in this tree
+# Node.js 24 — Active LTS (workspace Yarn 1 for cluster JS tests)
+node = "24.18.0"
+# Yarn classic — workspaces + yarn.lock
 yarn = "1.22.22"
-# Task (go-task) — Taskfile.yml host UX; https://taskfile.dev
+# Task (go-task) — Taskfile.yml host UX
 task = "3.52.0"
+
+# Host UX mirrors of Taskfile (same bin/*). Multi-app + nginx via compose.
+
+[tasks.config]
+description = "Print effective image / volume / project settings"
+run = "./bin/config"
+
+[tasks.setup]
+description = "Host bootstrap + warm caches (mise setup -- --skip-db)"
+run = "./bin/setup"
+
+[tasks.doctor]
+description = "Host / Docker / base image / apps / nginx sanity"
+run = "./bin/doctor"
+
+[tasks.cache]
+description = "Create the shared /cache volume (ubuntu-mise-cache)"
+alias = ["cache:ensure"]
+run = "./bin/cache-ensure"
+
+[tasks."cache:reset"]
+description = "Delete shared /cache volume (mise run cache:reset -- -y)"
+run = "./bin/cache-reset"
+
+[tasks.compose]
+description = "Pass-through to bin/compose (mise compose -- ps)"
+raw = true
+run = "./bin/compose"
+
+[tasks."compose:config"]
+description = "Show resolved cluster compose config"
+run = "./bin/compose config"
+
+[tasks."compose:down"]
+description = "compose down (keeps volumes by default)"
+run = "./bin/compose down"
+
+[tasks.apps]
+description = "Show apps from config/apps.yml"
+run = "./bin/apps yaml"
+
+[tasks.db]
+description = "Start only Postgres + Redis"
+run = "./bin/compose up -d db redis"
+
+# --- Interactive / attach ---
+
+[tasks.up]
+description = "compose up (mise up -- fred | george | fred george)"
+raw = true
+run = "./bin/compose up"
+
+[tasks."up:fred"]
+description = "Bring up fred + nginx + db + redis (TTY)"
+raw = true
+run = "./bin/compose up fred"
+
+[tasks."up:george"]
+description = "Bring up george + nginx + db + redis (TTY)"
+raw = true
+run = "./bin/compose up george"
+
+[tasks."up:all"]
+description = "Bring up fred + george + shared deps (TTY)"
+raw = true
+run = "./bin/compose up fred george"
+
+[tasks."shell:dev"]
+description = "Interactive shell in ubuntu-mise:dev (compose profile dev)"
+raw = true
+run = "./bin/compose --profile dev run --rm dev"

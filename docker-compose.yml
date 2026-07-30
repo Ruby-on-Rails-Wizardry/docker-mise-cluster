@@ -1,33 +1,36 @@
-# Multi-app dev cluster: Ubuntu + mise image, shared Bundler/Yarn caches.
+# Multi-app dev cluster: prebuilt ubuntu-mise:dev + nginx + Postgres + Redis.
+#
+# No cluster image build — apps use the local base tag only (pull_policy: never).
+# Build the base first:  cd ../ubuntu-mise && task build
 #
 # Cache *relative* paths: config/cache-layout.env (single source of truth).
-# Always run via: bin/compose …   (injects that file for ${CACHE_*} interpolation)
+# Always run via: bin/compose …  (writes .env + loads cache-layout.env)
 # App list SSOT: config/apps.yml  (keep compose services in sync for MVP)
 #
 # Prefer host-warmed caches: bin/setup && bin/compose up fred
 #   (or: bin/compose up george | bin/compose up fred george)
 #
 # Project mount: cluster root → /work  (WORKDIR; same contract as ubuntu-mise)
+# Shared /cache volume: same name as ubuntu-mise (ubuntu-mise-cache) for tools.
 #
 # Dependency order (apps pull the rest via depends_on):
 #   db, redis, nginx  ← brought up with any app
 #   fred / george     ← pick one or both
 #
 # Data services (dev credentials only — not for production):
-#   db    → PostgreSQL 18  (fred_development, george_development, …)
+#   db    → PostgreSQL (major from POSTGRESQL_VERSION / .mise.env, default 18)
 #   redis → Redis 8
 
 x-cache-env: &cache-env
-
   BUNDLE_PATH: /work/${CACHE_BUNDLE:-.cache/bundle}
   BUNDLE_CACHE_PATH: /work/${CACHE_RUBYGEMS:-.cache/rubygems}
   YARN_CACHE_FOLDER: /work/${CACHE_YARN_FOLDER:-.cache/yarn-cache}
 
-# Container login name (build + runtime). Defaults to host $USER, else "dev".
+# Container login must match the user baked into ubuntu-mise:dev (default dev).
 # Dev: mise install at runtime into /cache (volume). Prod apps: install at image build only.
 x-runtime-env: &runtime-env
-  HOME: /home/${USER:-dev}
-  USER: ${USER:-dev}
+  HOME: /home/${IMAGE_USER:-dev}
+  USER: ${IMAGE_USER:-dev}
   WORKSPACE: /work
   CACHE_ROOT: /cache
   MISE_DATA_DIR: /cache/mise
@@ -38,7 +41,7 @@ x-runtime-env: &runtime-env
   TZ: ${TZ:-UTC}
 
 # Shared Postgres/Redis connection defaults for app services.
-# Override via .env (see .env.example). Values are intentionally simple for local dev.
+# Override via .env (see .env.example / .mise.env). Values are intentionally simple for local dev.
 x-db-env: &db-env
   POSTGRES_HOST: db
   POSTGRES_PORT: "5432"
@@ -66,27 +69,18 @@ x-app-depends: &app-depends
     condition: service_healthy
 
 # App container defaults (YAML anchor only — not a service).
-# Image is a thin layer on local ubuntu-mise (see Dockerfile BASE_IMAGE).
-# fred + george + dev share this image; build after: task ubuntu:build
+# Prebuilt ubuntu-mise:dev only — never pull from a registry.
 x-app-base: &app-base
-  build:
-    context: .
-    dockerfile: Dockerfile
-    args:
-      BASE_IMAGE: ${BASE_IMAGE:-ubuntu-mise:dev}
-      USER: ${USER:-dev}
-      DEV_UID: ${DEV_UID:-1000}
-      DEV_GID: ${DEV_GID:-1000}
-      POSTGRESQL_VERSION: ${POSTGRESQL_VERSION:-18}
-  image: ${CLUSTER_IMAGE:-wf-dev:latest}
-  user: ${USER:-dev}
+  image: ${IMAGE:-ubuntu-mise:dev}
+  pull_policy: never
+  user: ${IMAGE_USER:-dev}
   working_dir: /work
   environment:
     <<: *service-env
   volumes:
     # Whole cluster root (apps, .cache, node_modules, config) → /work
     - .:/work:cached
-    # Shared mise tool installs (runtime `mise install`; survives container recreate)
+    # Shared mise tool installs (runtime `mise install`; same volume as ubuntu-mise)
     - type: volume
       source: mise-cache
       target: /cache
@@ -151,7 +145,7 @@ services:
       # busybox wget is in nginx:alpine
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
 
-  # --- Optional interactive shell --------------------------------------------
+  # --- Optional interactive shell (whole cluster tree) -----------------------
 
   dev:
     <<: *app-base
@@ -215,4 +209,4 @@ volumes:
   pgdata:
   # mise tool installs for dev runtime (`mise install` → MISE_DATA_DIR=/cache/mise)
   mise-cache:
-    name: ${MISE_CACHE_VOLUME:-ubuntu-mise-cache}
+    name: ${CACHE_VOLUME:-ubuntu-mise-cache}

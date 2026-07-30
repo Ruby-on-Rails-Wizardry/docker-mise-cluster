@@ -18,7 +18,8 @@ Reference trees (do not treat as the product):
 | Product shape | **Template** — clone, copy, or untar into a project (**dev** multi-app compose) |
 | App layout | **Git submodules** (`fred`, `george` → independent repos) |
 | **Production deploy** | **Two Kamal apps, one VPS** (Approach A): each app has its own image + `config/deploy.yml`; **kamal-proxy** routes by **hostname**. Not `docker compose` of this cluster in prod. |
-| Base image (dev) | **Local [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise)** (`BASE_IMAGE`, default `ubuntu-mise:dev`) + thin cluster layer (Postgres client/libpq); layout: `/home/$USER` + project **`/work`** + **`/cache`** volume (`USER` / `DEV_UID` / `DEV_GID` build args). Build base first: `task ubuntu:build` from the docker-mise umbrella. |
+| Base image (dev) | **Prebuilt [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise)** tag only (`IMAGE=ubuntu-mise:dev`, `pull_policy: never`) for **fred**, **george**, and optional **dev** shell — no cluster image layer. Shared **`/cache`** volume (`ubuntu-mise-cache`). Build base first: `cd ../ubuntu-mise && task build` (or `task ubuntu:build` from the umbrella). |
+| Host UX | Cluster + each app: **mise** + **Task** like ubuntu-sample (`.mise.env` with `POSTGRESQL_VERSION`, `bin/*`, mirrored tasks). Cluster orchestrates multi-app + **nginx** path routing. |
 | Yarn | **Classic 1.22.x** (not Berry) |
 | MVP services | Image + compose + shared gem/yarn caches + nginx + Postgres + Redis |
 | Apply to weasily | New `wf/` tree; leave `partial/` as reference |
@@ -78,7 +79,7 @@ george.example.com ─┼──► VPS ── kamal-proxy ──► container fr
 |---------|-------------------------|-------------------------|
 | Front door | nginx path prefix `/fred`, `/george` | **Hostname** per app (`proxy.host` in each `deploy.yml`) |
 | Process | compose + `bin/docker-app` | Thruster → Puma (`app` Dockerfile `CMD`) |
-| Image | shared `wf-dev` + bind-mount `/work` | Per-app image from `fred/Dockerfile` / `george/Dockerfile` |
+| Image | prebuilt `ubuntu-mise:dev` + bind-mount `/work` | Per-app image from `fred/Dockerfile` / `george/Dockerfile` |
 | Tools | runtime `mise install` → `/cache` | Frozen at image build (no mise on boot) |
 | Data | shared compose Postgres + Redis | SQLite volumes (generator default) *or* Postgres accessory later |
 | Deploy unit | `bin/compose up fred` | `cd fred && bin/kamal deploy` (independent of george) |
