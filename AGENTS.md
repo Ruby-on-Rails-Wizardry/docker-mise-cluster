@@ -19,7 +19,7 @@ Reference trees (do not treat as the product):
 | OS / base | **Ubuntu only** — prebuilt [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise) (`IMAGE=ubuntu-mise:dev`, `pull_policy: never`) |
 | App layout | **Git submodules** (`fred`, `ron`, `harry`, `george` → independent repos) |
 | App ports / paths | Simple name paths; ports from **3001**: fred `/fred:3001`, ron `/ron:3002`, harry `/harry:3003`, george `/george:3004` |
-| **Compose project name** | **Directory basename** — do **not** hardcode `COMPOSE_PROJECT_NAME` (copy to `wf/` → project `wf`) |
+| **Compose project name** | **Directory basename** (Docker default; copy to `wf/` → project `wf`) |
 | **Container user** | Baked into **ubuntu-mise** at **build**; compose does **not** pass user/UID at run time |
 | **Cache** | One Docker volume named **`cache`** → `/cache`; fill with **`task warm`** (crawl Gemfile / package.json) |
 | **Production deploy** | **N Kamal apps, one VPS** (Approach A): each app has its own image + `config/deploy.yml`; **kamal-proxy** routes by **hostname**. Not `docker compose` of this cluster in prod. |
@@ -62,13 +62,12 @@ App code changes are committed **inside** each app repo, then the parent cluster
 4. Do **not** set `BUNDLE_APP_CONFIG` to the cluster root when running app Gemfiles.
 5. Prefer `bundle install --local` / yarn `--offline` before network.
 6. Image user is set at **ubuntu-mise build** only (host `$USER` / UID / GID). Project mount / WORKDIR is **`/work`** (`WORKSPACE`). Do **not** pass `user:` / `IMAGE_USER` / `DEV_UID` at cluster run time.
-7. Do **not** set a default `COMPOSE_PROJECT_NAME` — Docker uses the directory name. Operators may export one only when they need a stable name across renames.
-8. Do not commit `.cache/**` contents (only `.gitkeep`).
-9. Do not introduce Yarn Berry in this template.
-10. Nginx is path routing only (**dev**). Do not reintroduce oauth2 here unless explicitly requested. Production uses **hostname** routing via kamal-proxy, not these path prefixes.
-11. Dev Postgres/Redis credentials stay in compose / `.env.example` only — never real secrets. Per-app DBs: `docker/postgres/init-databases.sql`; wire new apps in compose (`DATABASE_URL`, `REDIS_URL`) and that init script.
-12. **Mise install timing:** development → **runtime** + `/cache`; production → **image build** only (see Decisions table). Do not bake language toolchains into the cluster **dev** image build; do not run `mise install` on production boot.
-13. **Do not** treat this compose stack as production. Deploy each app with **Kamal** from its app repo.
+7. Do not commit `.cache/**` contents.
+8. Do not introduce Yarn Berry in this template.
+9. Nginx is path routing only (**dev**). Do not reintroduce oauth2 here unless explicitly requested. Production uses **hostname** routing via kamal-proxy, not these path prefixes.
+10. Dev Postgres/Redis credentials stay in compose / `.env.example` only — never real secrets. Per-app DBs: `docker/postgres/init-databases.sql`; wire new apps in compose (`DATABASE_URL`, `REDIS_URL`) and that init script.
+11. **Mise install timing:** development → **runtime** + `/cache`; production → **image build** only (see Decisions table). Do not bake language toolchains into the cluster **dev** image build; do not run `mise install` on production boot.
+12. **Do not** treat this compose stack as production. Deploy each app with **Kamal** from its app repo.
 
 ## Production deployment (Kamal — not compose)
 

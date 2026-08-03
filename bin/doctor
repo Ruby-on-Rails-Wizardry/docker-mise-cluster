@@ -53,15 +53,9 @@ else
   warn=1
 fi
 
-printf 'INFO compose project effective=%s' "${COMPOSE_PROJECT_EFFECTIVE}"
-if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
-  printf ' (COMPOSE_PROJECT_NAME override set)\n'
-else
-  printf ' (directory default; unset COMPOSE_PROJECT_NAME)\n'
-fi
+printf 'INFO compose project = directory name (%s)\n' "${CLUSTER}"
 printf 'INFO host build identity IMAGE_USER=%s DEV_UID=%s DEV_GID=%s (build-time only; not passed at run)\n' \
   "${IMAGE_USER}" "${DEV_UID}" "${DEV_GID}"
-
 if [[ -x "${ROOT}/bin/apps" ]]; then
   while IFS= read -r app; do
     [[ -n "${app}" ]] || continue

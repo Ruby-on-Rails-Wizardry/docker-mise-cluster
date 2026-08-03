@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Drop remaining `COMPOSE_PROJECT_NAME` / `COMPOSE_PROJECT_EFFECTIVE` surface (docs, doctor, .env)
+
+
 ### Fixed
 
 ### Security

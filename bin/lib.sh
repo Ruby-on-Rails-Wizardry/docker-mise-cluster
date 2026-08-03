@@ -8,8 +8,6 @@ FLAVOR_BASE="${FLAVOR_BASE:-ubuntu-mise}"
 IMAGE="${IMAGE:-${FLAVOR_BASE}:dev}"
 # Single shared Docker volume for /cache (mise, gems, yarn). Not project-prefixed.
 CACHE_VOLUME="${CACHE_VOLUME:-cache}"
-# Compose project: leave COMPOSE_PROJECT_NAME unset so Docker uses the directory
-# name (basename of project-directory). Export only if the operator set it.
 
 load_dotenv_if_unset() {
   local file=$1
@@ -57,8 +55,6 @@ PROJECT="${PROJECT:-${ROOT}}"
 CACHE_ROOT="${CACHE_ROOT:-/cache}"
 : "${POSTGRESQL_VERSION:=}"
 REDIS_VERSION="${REDIS_VERSION:-8}"
-# Effective Compose project name (Docker default = directory basename).
-COMPOSE_PROJECT_EFFECTIVE="${COMPOSE_PROJECT_NAME:-${CLUSTER}}"
 
 log() {
   printf '%s: %s\n' "${CLUSTER}" "$*" >&2
@@ -159,8 +155,6 @@ POSTGRESQL_VERSION=${POSTGRESQL_VERSION:-}
 REDIS_VERSION=${REDIS_VERSION}
 TZ=${TZ}
 ROOT=${ROOT}
-COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-}
-COMPOSE_PROJECT_EFFECTIVE=${COMPOSE_PROJECT_EFFECTIVE}
 APPS=$( [[ -x "${ROOT}/bin/apps" ]] && "${ROOT}/bin/apps" names | tr '\n' ' ' || echo "fred ron harry george" )
 EOF
 }
