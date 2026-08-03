@@ -8,7 +8,7 @@
 #   george → git@github.com:Ruby-on-Rails-Wizardry/george.git
 #
 # Keep compose.yml services and nginx/nginx.conf in sync with ports / url_root / database.
-# DBs: Rails db:prepare creates missing databases (no init-databases.sql on simpler-experment).
+# DBs: Rails db:prepare creates missing databases.
 
 apps:
   - name: fred
@@ -17,7 +17,6 @@ apps:
     url_root: /fred            # nginx path prefix (RAILS_RELATIVE_URL_ROOT)
     database: fred_development # Postgres DB on compose `db` (DATABASE_URL)
     redis_db: 0                # REDIS_URL logical DB index
-    # health: /up              # default /up (nginx strips url_root before proxy)
   - name: ron
     path: ron
     port: 3002

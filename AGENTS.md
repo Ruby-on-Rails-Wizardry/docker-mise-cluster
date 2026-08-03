@@ -34,7 +34,7 @@ Reference trees (do not treat as the product):
 
 | Context | `mise install` | Cache / layers | Runtime |
 |---------|----------------|----------------|---------|
-| **Development** (ubuntu-mise, compose apps + `dev`) | **At container runtime** | Shared **`/cache`** volume (and host-warmed gem/yarn under `/work/.cache`) | `mise activate` + `mise install` as needed (`bin/docker-app`, `dev` shell) |
+| **Development** (ubuntu-mise, compose apps + `dev`) | **At container runtime** | Shared **`/cache`** volume | `mise activate` + `mise install` as needed (`bin/docker-app`, `dev` shell) |
 | **Production** (app Dockerfiles / Kamal) — **default** | N/A (no mise) | Official base + gems/assets in image layers | Fixed process (Thruster/Puma). Pin Ruby via Dockerfile `ARG` matching Gemfile |
 | **Production** — **if mise is adopted** | **Builder stage only** (`RUN mise install`, BuildKit caches) | Downloads in builder cache; **copy-out** to runtime | Start server only. Prefer **no mise** in the final image; never install/activate on boot |
 
@@ -57,11 +57,11 @@ App code changes are committed **inside** each app repo, then the parent cluster
 ## Rules
 
 1. **One cache:** volume **`cache`** → `/cache` (image ENV for mise/bundle/yarn). Warm with **`bin/warm`**. Do not reintroduce host `.cache` dual paths.
-2. App list only in **`config/apps.yml`**; `bin/setup` and `bin/apps` read it. Keep **`compose.yml`** and **`nginx/`** in sync (`port`, `url_root`, DB). Shared app shape: `x-app`. DBs via Rails `db:prepare` (no SQL init on simpler-experment).
+2. App list only in **`config/apps.yml`**; `bin/setup` and `bin/apps` read it. Keep **`compose.yml`** and **`nginx/`** in sync (`port`, `url_root`, DB). Shared app shape: `x-app`. DBs via Rails `db:prepare`.
 3. Bundler flags only in **`config/bundler-flags.yml`** (symlinked as `.bundle/config`).
 4. Do **not** set `BUNDLE_APP_CONFIG` to the cluster root when running app Gemfiles.
 5. Prefer `bundle install --local` / yarn `--offline` before network.
-6. Image user is set at **ubuntu-mise build** only (host `$USER` / UID / GID). Project mount / WORKDIR is **`/work`** (`WORKSPACE`). Do **not** pass `user:` / `IMAGE_USER` / `DEV_UID` at cluster run time.
+6. Image user is set at **ubuntu-mise build** only (host `$USER` / UID / GID). Project mount / WORKDIR is **`/work`**. Cache/mise/bundle/yarn paths come from **ubuntu-mise image ENV** — do not re-declare them in cluster compose. Do **not** pass `user:` / `IMAGE_USER` / `DEV_UID` at cluster run time.
 7. Do not commit `.cache/**` contents.
 8. Do not introduce Yarn Berry in this template.
 9. Nginx is path routing only (**dev**). Do not reintroduce oauth2 here unless explicitly requested. Production uses **hostname** routing via kamal-proxy, not these path prefixes.
@@ -129,7 +129,7 @@ Config: `nginx/nginx.conf` + `nginx/proxy.conf`. Apps set `RAILS_RELATIVE_URL_RO
 | `db` | Postgres 18; per-app `*_development` / `*_test` databases |
 | `redis` | Redis 8; `REDIS_URL` per app (DB index 0–3) |
 
-Apps depend on db/redis/nginx healthy before start. Host setup against Postgres needs `bin/compose up -d db` (or `--skip-db`).
+Apps `depends_on` db/redis/nginx for start order. `bin/docker-app` waits for Postgres. Host setup against Postgres needs `bin/compose up -d db` (or `--skip-db`).
 
 ### Reset one app database
 

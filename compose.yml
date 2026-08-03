@@ -5,20 +5,9 @@
 # Build nginx once:  bin/compose build nginx
 # Run:               task up:fred | task up:all
 #
-# Experiment (simpler-experment):
-#   - No init-databases.sql — Rails db:prepare creates DBs if missing
-#   - No healthchecks on app services (less log spam)
-#   - nginx built from ./nginx/Dockerfile (local image)
-#
-# Single shared volume `cache` → /cache. Compose project = directory basename.
-
-x-runtime-env: &runtime-env
-  WORKSPACE: /work
-  CACHE_ROOT: /cache
-  MISE_DATA_DIR: /cache/mise
-  MISE_CACHE_DIR: /cache/mise-cache
-  MISE_TRUSTED_CONFIG_PATHS: /work
-  TZ: ${TZ:-UTC}
+# Volume `cache` → /cache (mise/gems/yarn via image ENV). Project at /work.
+# Compose project name = directory basename. Topology only — no healthchecks;
+# bin/docker-app waits for Postgres; Rails db:prepare creates DBs.
 
 x-db-env: &db-env
   POSTGRES_HOST: db
@@ -26,29 +15,23 @@ x-db-env: &db-env
   POSTGRES_USER: ${POSTGRES_USER:-cluster}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cluster}
 
-x-service-env: &service-env
-  <<: [*runtime-env, *db-env]
-
-# Shared by every Rails app (and optional `dev` shell). No app healthchecks.
+# Shared by every Rails app (and optional `dev` shell).
 x-app: &app
   image: ${IMAGE:-ubuntu-mise:dev}
   pull_policy: never
   working_dir: /work
   environment:
-    <<: *service-env
+    <<: *db-env
   volumes:
     - .:/work:cached
     - cache:/cache
   stdin_open: true
   tty: true
   depends_on:
-    db:
-      condition: service_healthy
-    redis:
-      condition: service_healthy
-    nginx:
-      condition: service_started
-  command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
+    - db
+    - redis
+    - nginx
+  command: ["bash", "-lc", "exec /work/bin/docker-app"]
 
 services:
   db:
@@ -56,29 +39,16 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-cluster}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cluster}
-      # Superuser default DB only — per-app DBs via Rails db:create / db:prepare
       POSTGRES_DB: postgres
     volumes:
       - pgdata:/var/lib/postgresql
     ports:
       - "${POSTGRES_PUBLISH_PORT:-5432}:5432"
-    healthcheck:
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d postgres"]
 
   redis:
     image: redis:${REDIS_VERSION:-8}-alpine
     ports:
       - "${REDIS_PUBLISH_PORT:-6379}:6379"
-    healthcheck:
-      interval: 5s
-      timeout: 3s
-      retries: 12
-      start_period: 5s
-      test: ["CMD", "redis-cli", "ping"]
 
   nginx:
     build:
@@ -88,21 +58,13 @@ services:
     pull_policy: never
     ports:
       - "8080:8080"
-    # Config baked into image (rebuild after nginx/ edits).
-    # Optional live bind mounts for local hacking:
-    #   volumes:
-    #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    #     - ./nginx/proxy.conf:/etc/nginx/proxy.conf:ro
-    #     - ./nginx/html:/usr/share/nginx/html:ro
 
   dev:
     <<: *app
     profiles: ["dev"]
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - db
+      - redis
     command: ["bash", "-lc", "mise install && exec bash"]
 
   # --- Apps (deltas only; keep in sync with config/apps.yml) -----------------
@@ -113,7 +75,7 @@ services:
     ports:
       - "3001:3001"
     environment:
-      <<: *service-env
+      <<: *db-env
       PORT: "3001"
       RAILS_RELATIVE_URL_ROOT: /fred
       DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/fred_development
@@ -125,7 +87,7 @@ services:
     ports:
       - "3002:3002"
     environment:
-      <<: *service-env
+      <<: *db-env
       PORT: "3002"
       RAILS_RELATIVE_URL_ROOT: /ron
       DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/ron_development
@@ -137,7 +99,7 @@ services:
     ports:
       - "3003:3003"
     environment:
-      <<: *service-env
+      <<: *db-env
       PORT: "3003"
       RAILS_RELATIVE_URL_ROOT: /harry
       DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/harry_development
@@ -149,7 +111,7 @@ services:
     ports:
       - "3004:3004"
     environment:
-      <<: *service-env
+      <<: *db-env
       PORT: "3004"
       RAILS_RELATIVE_URL_ROOT: /george
       DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/george_development

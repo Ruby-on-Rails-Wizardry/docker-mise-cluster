@@ -2,8 +2,8 @@
 # Read config/apps.yml and print app / shared-gem fields for other scripts.
 #
 # Usage:
-#   bin/apps names          # fred george
-#   bin/apps paths          # fred george  (path field)
+#   bin/apps names          # fred ron harry george
+#   bin/apps paths          # fred ron harry george  (path field)
 #   bin/apps ports          # name=port lines
 #   bin/apps shared-paths   # shared gem paths
 #   bin/apps yaml           # dump validated YAML summary

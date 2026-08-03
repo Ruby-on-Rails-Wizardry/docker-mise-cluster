@@ -15,7 +15,7 @@ Copy the **orchestration layer** as a unit:
 | `config/apps.yml` | App list (rewrite for your apps) |
 | `config/bundler-flags.yml` | Shared Bundler flags |
 | `nginx/` | Path reverse proxy + home page |
-| `docker/postgres/` | Optional notes only (simpler-experment: Rails creates DBs) |
+| `docker/postgres/` | Optional notes (Rails `db:prepare` creates DBs by default) |
 | `nginx/Dockerfile` | Local nginx image build |
 | `Taskfile.yml`, `mise.toml`, `.mise.env` | Host tasks + defaults |
 | Root `package.json` / `yarn.lock` | Yarn workspaces (adjust names) |

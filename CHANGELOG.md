@@ -9,14 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Security
+
+## [0.8.0] - 2026-08-03
+
+### Added
+
 - `docs/ADOPT.md` — how to use this template in a real project
 - `nginx/Dockerfile` — local **`cluster-nginx:dev`** (config baked in)
 
 ### Changed
 
-- **simpler-experment:** drop `init-databases.sql` — Rails `db:prepare` creates missing DBs
-- **simpler-experment:** no healthchecks on app services (less log spam); nginx via `service_started`
-- nginx local image (`pull_policy: never`) instead of Hub + bind-mount only
+- DBs via Rails `db:prepare` only (no `init-databases.sql` mount)
+- No compose healthchecks; start-order `depends_on`; apps wait for Postgres in `bin/docker-app`
+- Nginx from local image (`pull_policy: never`) with baked config
+- Compose no longer re-declares image ENV (`CACHE_ROOT` / `MISE_*` / …); start via `/work/bin/docker-app`
+- Docs and comments match current layout (single `/cache` volume, topology-only compose)
 
 ### Fixed
 
@@ -147,7 +159,10 @@ First tagged release of the multi-app Docker + mise cluster template.
 - Docker image build: copy root `Gemfile` so `mise install` installs Ruby (not only Node/Yarn)
 - Untrusted `fred/mise.toml` / `george/mise.toml` under the host bind mount
 
-[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.3.1...v0.5.0
 [0.3.1]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.2.1...v0.3.0
