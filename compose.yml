@@ -162,6 +162,7 @@ services:
 
 volumes:
   pgdata:
-  # Single shared tool/package cache (mise, gems, yarn). Name is just `cache`.
+  # Shared tool/package cache (mise, gems, yarn). Created by bin/warm / bin/cache-ensure.
   cache:
     name: cache
+    external: true

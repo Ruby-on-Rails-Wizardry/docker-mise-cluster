@@ -64,11 +64,13 @@ yarn-offline-mirror-pruning true
 EOF
 fi
 
-echo "== warm: crawling Gemfile"
+# Only project roots (maxdepth 2): /work/Gemfile and /work/<app>/Gemfile.
+# Do not crawl .cache, vendor, or nested gem/source trees.
+echo "== warm: crawling Gemfile (project roots)"
 while IFS= read -r -d "" gf; do
   dir="$(dirname "${gf}")"
   rel="${dir#/work/}"
-  [[ "${rel}" == "/work" ]] && rel="."
+  [[ "${rel}" == "/work" || -z "${rel}" ]] && rel="."
   echo "== warm: bundle (${rel})"
   (
     cd "${dir}"
@@ -79,12 +81,11 @@ while IFS= read -r -d "" gf; do
     fi
     bundle cache --all-platforms 2>/dev/null || true
   )
-done < <(find /work -type f -name Gemfile \
-  ! -path "*/.git/*" ! -path "*/node_modules/*" ! -path "*/vendor/*" \
+done < <(find /work -maxdepth 2 -type f -name Gemfile \
+  ! -path "*/.git/*" ! -path "*/.cache/*" ! -path "*/node_modules/*" ! -path "*/vendor/*" \
   -print0 2>/dev/null | sort -z)
 
-echo "== warm: crawling package.json"
-# Prefer a single yarn install at the first root that has yarn.lock + workspaces.
+echo "== warm: crawling package.json (project roots)"
 if [[ -f /work/yarn.lock ]] && [[ -f /work/package.json ]]; then
   echo "== warm: yarn install (/work workspaces)"
   (
@@ -101,8 +102,8 @@ else
       cd "${dir}"
       yarn install --frozen-lockfile 2>/dev/null || yarn install
     ) || echo "   warning: yarn failed in ${rel}" >&2
-  done < <(find /work -type f -name package.json \
-    ! -path "*/.git/*" ! -path "*/node_modules/*" ! -path "*/vendor/*" \
+  done < <(find /work -maxdepth 2 -type f -name package.json \
+    ! -path "*/.git/*" ! -path "*/.cache/*" ! -path "*/node_modules/*" ! -path "*/vendor/*" \
     -print0 2>/dev/null | sort -z)
 fi
 
