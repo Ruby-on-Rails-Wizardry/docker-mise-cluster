@@ -56,7 +56,7 @@ App code changes are committed **inside** each app repo, then the parent cluster
 ## Rules
 
 1. Cache paths only in **`config/cache-layout.env`**; use **`bin/cache-env`** / **`bin/compose`**.
-2. App list only in **`config/apps.yml`**; `bin/setup` and `bin/apps` read it. Keep compose services, **`nginx/nginx.conf`**, and **`docker/postgres/init-databases.sql`** in sync for MVP (`port`, `url_root` ↔ `RAILS_RELATIVE_URL_ROOT` + nginx `location` + DB names).
+2. App list only in **`config/apps.yml`**; `bin/setup` and `bin/apps` read it. Keep **`compose.yml`** services, **`nginx/nginx.conf`**, and **`docker/postgres/init-databases.sql`** in sync for MVP (`port`, `url_root` ↔ `RAILS_RELATIVE_URL_ROOT` + nginx `location` + DB names). Shared app shape lives in the `x-app` anchor — per-app blocks are deltas only.
 3. Bundler flags only in **`config/bundler-flags.yml`** (symlinked as `.bundle/config`).
 4. Do **not** set `BUNDLE_APP_CONFIG` to the cluster root when running app Gemfiles.
 5. Prefer `bundle install --local` / yarn `--offline` before network.

@@ -1,7 +1,7 @@
 # OPTIONAL thin multi-app development image on ubuntu-mise.
 #
 # Default cluster compose uses **prebuilt ubuntu-mise:dev** directly
-# (docker-compose.yml pull_policy: never) — you do **not** need this Dockerfile.
+# (compose.yml pull_policy: never) — you do **not** need this Dockerfile.
 #
 # Keep this file only if you need an extra package layer on top of the base.
 # Prefer extending ubuntu-mise itself when possible.

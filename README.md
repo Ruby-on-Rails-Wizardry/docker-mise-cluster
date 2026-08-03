@@ -57,7 +57,7 @@ cluster/   # or wf/ — directory name becomes the Compose project name
 ├── nginx/                    # path routing + home page
 ├── docker/postgres/          # per-app DB init
 ├── fred/  ron/  harry/  george/   # submodules — Task/mise like ubuntu-sample
-├── docker-compose.yml        # prebuilt ubuntu-mise:dev + nginx + db + redis
+├── compose.yml               # prebuilt ubuntu-mise:dev + nginx + db + redis
 ├── Dockerfile                # optional thin layer (not used by default compose)
 ├── mise.toml / Taskfile.yml  # multi-app host UX
 └── README.md
@@ -172,7 +172,7 @@ Apps **depend on nginx** (plus `db` / `redis`). Nginx does **not** wait for apps
 | `/harry/` | `harry:3003` | same pattern |
 | `/george/` | `george:3004` | same pattern |
 
-Edit routing in `nginx/nginx.conf`. Keep `url_root` in `config/apps.yml` and `RAILS_RELATIVE_URL_ROOT` in `docker-compose.yml` aligned with those paths.
+Edit routing in `nginx/nginx.conf`. Keep `url_root` in `config/apps.yml` and `RAILS_RELATIVE_URL_ROOT` in `compose.yml` aligned with those paths.
 
 Always use **`bin/compose`** (not plain `docker compose`) so `config/cache-layout.env` is loaded.
 
@@ -182,7 +182,7 @@ Always use **`bin/compose`** (not plain `docker compose`) so `config/cache-layou
 2. Edit **`config/apps.yml`** — names, paths, ports, `url_root`, databases.
 3. Point **`.gitmodules`** at your app repos (demo apps: [fred](https://github.com/Ruby-on-Rails-Wizardry/fred), [ron](https://github.com/Ruby-on-Rails-Wizardry/ron), [harry](https://github.com/Ruby-on-Rails-Wizardry/harry), [george](https://github.com/Ruby-on-Rails-Wizardry/george)).
 4. Update root **`package.json`** `workspaces` if JS workspaces change.
-5. Keep **`docker-compose.yml`** app services (ports, `RAILS_RELATIVE_URL_ROOT`), **`nginx/nginx.conf`** locations, and **`docker/postgres/init-databases.sql`** in sync with `apps.yml` (MVP: manual; generation later).
+5. Keep **`compose.yml`** app services (ports, `RAILS_RELATIVE_URL_ROOT`), **`nginx/nginx.conf`** locations, and **`docker/postgres/init-databases.sql`** in sync with `apps.yml` (MVP: manual; generation later).
 6. Run `bin/setup` and `bin/compose up fred` (or any subset / all four).
 
 ## Cache model

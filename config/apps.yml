@@ -7,7 +7,7 @@
 #   harry → git@github.com:Ruby-on-Rails-Wizardry/harry.git
 #   george → git@github.com:Ruby-on-Rails-Wizardry/george.git
 #
-# Keep docker-compose.yml services, nginx/nginx.conf locations, and
+# Keep compose.yml services, nginx/nginx.conf locations, and
 # docker/postgres/init-databases.sql in sync with ports / url_root / database.
 
 apps:

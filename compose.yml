@@ -1,0 +1,185 @@
+# Multi-app dev cluster: prebuilt ubuntu-mise:dev + nginx + Postgres + Redis.
+#
+# No cluster image build — apps use the local base tag only (pull_policy: never).
+# Build the base first:  cd ../ubuntu-mise && task build
+#
+# Cache *relative* paths: config/cache-layout.env (via bin/compose --env-file).
+# Always run via: bin/compose …  (writes .env + loads cache-layout.env)
+# App list SSOT: config/apps.yml  (keep compose services in sync for MVP)
+#
+# Prefer host-warmed caches: bin/setup && bin/compose up fred
+# Project mount: cluster root → /work. Compose project name = directory basename.
+#
+# Per-app services only set what differs (path, port, DB, redis index).
+# Shared app shape: x-app (image, volumes, depends_on, command, healthcheck).
+
+x-cache-env: &cache-env
+  BUNDLE_PATH: /work/${CACHE_BUNDLE:-.cache/bundle}
+  BUNDLE_CACHE_PATH: /work/${CACHE_RUBYGEMS:-.cache/rubygems}
+  YARN_CACHE_FOLDER: /work/${CACHE_YARN_FOLDER:-.cache/yarn-cache}
+
+# Image USER/HOME are baked at ubuntu-mise build — do not override here.
+x-runtime-env: &runtime-env
+  WORKSPACE: /work
+  CACHE_ROOT: /cache
+  MISE_DATA_DIR: /cache/mise
+  MISE_CACHE_DIR: /cache/mise-cache
+  MISE_TRUSTED_CONFIG_PATHS: /work
+  TZ: ${TZ:-UTC}
+
+x-db-env: &db-env
+  POSTGRES_HOST: db
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: ${POSTGRES_USER:-cluster}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cluster}
+
+x-service-env: &service-env
+  <<: [*cache-env, *runtime-env, *db-env]
+
+# Shared by every Rails app service (and optional `dev` shell).
+x-app: &app
+  image: ${IMAGE:-ubuntu-mise:dev}
+  pull_policy: never
+  working_dir: /work
+  environment:
+    <<: *service-env
+  volumes:
+    - .:/work:cached
+    - type: volume
+      source: mise-cache
+      target: /cache
+  stdin_open: true
+  tty: true
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    nginx:
+      condition: service_healthy
+  command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
+  healthcheck:
+    interval: 10s
+    timeout: 5s
+    retries: 12
+    start_period: 90s
+    # PORT comes from each service's environment
+    test: ["CMD-SHELL", "curl -fsS \"http://127.0.0.1:$${PORT}/up\" >/dev/null"]
+
+services:
+  db:
+    image: postgres:${POSTGRESQL_VERSION:-18}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cluster}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cluster}
+      POSTGRES_DB: postgres
+    volumes:
+      # Postgres 18+ volume path (not .../data): docker-library/postgres#1259
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
+    ports:
+      - "${POSTGRES_PUBLISH_PORT:-5432}:5432"
+    healthcheck:
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d postgres"]
+
+  redis:
+    image: redis:${REDIS_VERSION:-8}-alpine
+    ports:
+      - "${REDIS_PUBLISH_PORT:-6379}:6379"
+    healthcheck:
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+      test: ["CMD", "redis-cli", "ping"]
+
+  # Path routing; apps depend on nginx (not the reverse) so one-app up still works.
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/proxy.conf:/etc/nginx/proxy.conf:ro
+      - ./nginx/html:/usr/share/nginx/html:ro
+    healthcheck:
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+
+  # Optional interactive shell (whole cluster tree): bin/compose --profile dev run --rm dev
+  dev:
+    <<: *app
+    profiles: ["dev"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["bash", "-lc", "mise install && exec bash"]
+    healthcheck:
+      disable: true
+
+  # --- Apps (only deltas; keep in sync with config/apps.yml) -----------------
+  #   bin/compose up fred
+  #   bin/compose up ron harry
+  #   bin/compose up fred ron harry george
+
+  fred:
+    <<: *app
+    working_dir: /work/fred
+    ports:
+      - "3001:3001"
+    environment:
+      <<: *service-env
+      PORT: "3001"
+      RAILS_RELATIVE_URL_ROOT: /fred
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/fred_development
+      REDIS_URL: redis://redis:6379/0
+
+  ron:
+    <<: *app
+    working_dir: /work/ron
+    ports:
+      - "3002:3002"
+    environment:
+      <<: *service-env
+      PORT: "3002"
+      RAILS_RELATIVE_URL_ROOT: /ron
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/ron_development
+      REDIS_URL: redis://redis:6379/1
+
+  harry:
+    <<: *app
+    working_dir: /work/harry
+    ports:
+      - "3003:3003"
+    environment:
+      <<: *service-env
+      PORT: "3003"
+      RAILS_RELATIVE_URL_ROOT: /harry
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/harry_development
+      REDIS_URL: redis://redis:6379/2
+
+  george:
+    <<: *app
+    working_dir: /work/george
+    ports:
+      - "3004:3004"
+    environment:
+      <<: *service-env
+      PORT: "3004"
+      RAILS_RELATIVE_URL_ROOT: /george
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/george_development
+      REDIS_URL: redis://redis:6379/3
+
+volumes:
+  pgdata:
+  mise-cache:
+    name: ${CACHE_VOLUME:-ubuntu-mise-cache}
