@@ -28,9 +28,9 @@ if [[ -z "${DEV_GID:-}" ]]; then
 fi
 export DEV_GID
 
-# Prefer IMAGE_USER from .mise.env (dev) over host login for container user.
+# IMAGE_USER — container login; default host $USER (same as ubuntu-mise).
 if [[ -z "${IMAGE_USER:-}" ]]; then
-  IMAGE_USER="dev"
+  IMAGE_USER="${USER}"
 fi
 export IMAGE_USER
 

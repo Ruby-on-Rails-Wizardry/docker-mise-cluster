@@ -1,14 +1,15 @@
-# Host UX for docker-mise-cluster. Requires Task: https://taskfile.dev
+# Host UX for the multi-app Ubuntu cluster. Requires Task: https://taskfile.dev
 # Install via mise (see mise.toml):  mise install
 # bin/* implements the same commands without Task.
 #
 # Prebuilt base only: IMAGE=ubuntu-mise:dev (pull_policy: never).
-#   cd ../ubuntu-mise && task build
+#   cd ../ubuntu-mise && task build   # uses host USER / UID by default
 #   task setup
-#   task up:fred          # or up:george | up:all
-#   # http://localhost:8080/fred/  and/or /george/
+#   task up:fred          # or up:ron | up:harry | up:george | up:all
+#   # http://localhost:8080/fred/ … /george/
 #
-# Apps (fred/george) are submodules with their own Task/mise like ubuntu-sample.
+# Apps are submodules with their own Task/mise like ubuntu-sample.
+# Compose project name = directory basename (do not hardcode).
 
 version: "3"
 
@@ -16,7 +17,8 @@ env:
   FLAVOR_BASE: ubuntu-mise
   IMAGE: '{{.IMAGE | default "ubuntu-mise:dev"}}'
   CACHE_VOLUME: '{{.CACHE_VOLUME | default "ubuntu-mise-cache"}}'
-  IMAGE_USER: '{{.IMAGE_USER | default "dev"}}'
+  IMAGE_USER:
+    sh: 'printf %s "${IMAGE_USER:-$(id -un 2>/dev/null || echo dev)}"'
   PROJECT:
     sh: 'printf %s "${PROJECT:-{{.USER_WORKING_DIR}}}"'
   DEV_UID:
@@ -67,7 +69,7 @@ tasks:
       - ./bin/compose config
 
   up:
-    desc: "bin/compose up (task up -- fred | george | fred george)"
+    desc: "bin/compose up (task up -- fred | ron | harry | george)"
     interactive: true
     cmds:
       - ./bin/compose up {{.CLI_ARGS}}
@@ -78,6 +80,18 @@ tasks:
     cmds:
       - ./bin/compose up fred
 
+  up:ron:
+    desc: Bring up ron + nginx + db + redis
+    interactive: true
+    cmds:
+      - ./bin/compose up ron
+
+  up:harry:
+    desc: Bring up harry + nginx + db + redis
+    interactive: true
+    cmds:
+      - ./bin/compose up harry
+
   up:george:
     desc: Bring up george + nginx + db + redis
     interactive: true
@@ -85,10 +99,10 @@ tasks:
       - ./bin/compose up george
 
   up:all:
-    desc: Bring up fred + george + shared deps
+    desc: Bring up all four apps + shared deps
     interactive: true
     cmds:
-      - ./bin/compose up fred george
+      - ./bin/compose up fred ron harry george
 
   down:
     desc: bin/compose down
@@ -106,7 +120,7 @@ tasks:
       - ./bin/compose up -d db redis
 
   db:reset:
-    desc: "Reset app DB(s) — task db:reset -- fred | george | fred george"
+    desc: "Reset app DB(s) — task db:reset -- fred ron | …"
     cmds:
       - ./bin/db-reset {{.CLI_ARGS}}
 
@@ -114,6 +128,16 @@ tasks:
     desc: Reset fred_development
     cmds:
       - ./bin/db-reset fred
+
+  db:reset:ron:
+    desc: Reset ron_development
+    cmds:
+      - ./bin/db-reset ron
+
+  db:reset:harry:
+    desc: Reset harry_development
+    cmds:
+      - ./bin/db-reset harry
 
   db:reset:george:
     desc: Reset george_development
@@ -130,6 +154,18 @@ tasks:
   fred:
     desc: "Run a task in fred/ (task fred -- setup | shell | compose:up)"
     dir: fred
+    cmds:
+      - task {{.CLI_ARGS}}
+
+  ron:
+    desc: "Run a task in ron/ (task ron -- setup | shell | compose:up)"
+    dir: ron
+    cmds:
+      - task {{.CLI_ARGS}}
+
+  harry:
+    desc: "Run a task in harry/ (task harry -- setup | shell | compose:up)"
+    dir: harry
     cmds:
       - task {{.CLI_ARGS}}
 

@@ -71,7 +71,7 @@ if [[ -f "${CLUSTER_ROOT}/package.json" ]] && [[ -f "${CLUSTER_ROOT}/yarn.lock" 
 fi
 
 # --- PostgreSQL (required in development) ------------------------------------
-# Compose sets DATABASE_URL per app (fred_development / george_development).
+# Compose sets DATABASE_URL per app (see config/apps.yml database:).
 # Fail early if we are not on postgresql after db:prepare.
 redact_url() {
   # postgresql://user:pass@host:5432/db → postgresql://user:***@host:5432/db

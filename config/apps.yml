@@ -2,23 +2,40 @@
 # Edit this file when adopting the template (clone/copy/untar) into a project.
 #
 # Apps are git submodules at `path` (see .gitmodules). Demo apps:
-#   fred   → git@github.com:Ruby-on-Rails-Wizardry/fred.git
+#   fred  → git@github.com:Ruby-on-Rails-Wizardry/fred.git
+#   ron   → git@github.com:Ruby-on-Rails-Wizardry/ron.git
+#   harry → git@github.com:Ruby-on-Rails-Wizardry/harry.git
 #   george → git@github.com:Ruby-on-Rails-Wizardry/george.git
+#
+# Keep docker-compose.yml services, nginx/nginx.conf locations, and
+# docker/postgres/init-databases.sql in sync with ports / url_root / database.
 
 apps:
   - name: fred
     path: fred
-    port: 3000
+    port: 3001
     url_root: /fred            # nginx path prefix (RAILS_RELATIVE_URL_ROOT)
     database: fred_development # Postgres DB on compose `db` (DATABASE_URL)
     redis_db: 0                # REDIS_URL logical DB index
     # health: /up              # default /up (nginx strips url_root before proxy)
+  - name: ron
+    path: ron
+    port: 3002
+    url_root: /ron
+    database: ron_development
+    redis_db: 1
+  - name: harry
+    path: harry
+    port: 3003
+    url_root: /harry
+    database: harry_development
+    redis_db: 2
   - name: george
     path: george
-    port: 3001
+    port: 3004
     url_root: /george
     database: george_development
-    redis_db: 1
+    redis_db: 3
 
 # Shared path-gems mounted into the workspace (optional for MVP).
 # When present, bin/setup does not treat them as Rails apps unless listed under apps.

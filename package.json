@@ -4,11 +4,15 @@
   "private": true,
   "workspaces": [
     "fred",
+    "ron",
+    "harry",
     "george"
   ],
   "scripts": {
     "test": "yarn workspaces run test",
     "test:fred": "yarn workspace fred test",
+    "test:ron": "yarn workspace ron test",
+    "test:harry": "yarn workspace harry test",
     "test:george": "yarn workspace george test"
   }
 }

@@ -6,3 +6,11 @@
 	path = george
 	url = git@github.com:Ruby-on-Rails-Wizardry/george.git
 	branch = master
+[submodule "ron"]
+	path = ron
+	url = git@github.com:Ruby-on-Rails-Wizardry/ron.git
+	branch = master
+[submodule "harry"]
+	path = harry
+	url = git@github.com:Ruby-on-Rails-Wizardry/harry.git
+	branch = master

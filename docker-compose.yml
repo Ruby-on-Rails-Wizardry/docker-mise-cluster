@@ -8,14 +8,15 @@
 # App list SSOT: config/apps.yml  (keep compose services in sync for MVP)
 #
 # Prefer host-warmed caches: bin/setup && bin/compose up fred
-#   (or: bin/compose up george | bin/compose up fred george)
+#   (or: bin/compose up ron | harry | george | all four)
 #
 # Project mount: cluster root → /work  (WORKDIR; same contract as ubuntu-mise)
 # Shared /cache volume: same name as ubuntu-mise (ubuntu-mise-cache) for tools.
+# Compose project name: directory basename (do not hardcode in .env).
 #
 # Dependency order (apps pull the rest via depends_on):
 #   db, redis, nginx  ← brought up with any app
-#   fred / george     ← pick one or both
+#   fred / ron / harry / george  ← pick any subset
 #
 # Data services (dev credentials only — not for production):
 #   db    → PostgreSQL (major from POSTGRESQL_VERSION / .mise.env, default 18)
@@ -26,7 +27,7 @@ x-cache-env: &cache-env
   BUNDLE_CACHE_PATH: /work/${CACHE_RUBYGEMS:-.cache/rubygems}
   YARN_CACHE_FOLDER: /work/${CACHE_YARN_FOLDER:-.cache/yarn-cache}
 
-# Container login must match the user baked into ubuntu-mise:dev (default dev).
+# Container login must match the user baked into ubuntu-mise:dev (host $USER by default).
 # Dev: mise install at runtime into /cache (volume). Prod apps: install at image build only.
 x-runtime-env: &runtime-env
   HOME: /home/${IMAGE_USER:-dev}
@@ -58,7 +59,7 @@ x-healthcheck: &healthcheck-defaults
   retries: 12
   start_period: 90s
 
-# Shared by fred/george: data stores + front-door proxy.
+# Shared by all apps: data stores + front-door proxy.
 # Compose pulls these in automatically when you `up` an app service.
 x-app-depends: &app-depends
   db:
@@ -159,10 +160,10 @@ services:
     command: ["bash", "-lc", "mise install && exec bash"]
 
   # --- Apps (ports/paths must match config/apps.yml) -------------------------
-  # Run one or both; depends_on pulls nginx + db + redis.
+  # Run any subset; depends_on pulls nginx + db + redis.
   #   bin/compose up fred
-  #   bin/compose up george
-  #   bin/compose up fred george
+  #   bin/compose up ron harry
+  #   bin/compose up fred ron harry george
 
   fred:
     <<: *app-base
@@ -170,32 +171,10 @@ services:
     working_dir: /work/fred
     environment:
       <<: *service-env
-      PORT: "3000"
-      # Path prefix when reached via nginx (see nginx/nginx.conf)
+      PORT: "3001"
       RAILS_RELATIVE_URL_ROOT: /fred
       DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/fred_development
-      # App-specific Redis logical DB (0 = fred, 1 = george)
       REDIS_URL: redis://redis:6379/0
-    command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
-    ports:
-      - "3000:3000"
-    depends_on:
-      <<: *app-depends
-    healthcheck:
-      <<: *healthcheck-defaults
-      # App still serves /up; nginx strips /fred before proxying
-      test: ["CMD", "curl", "-f", "http://localhost:3000/up"]
-
-  george:
-    <<: *app-base
-    hostname: george
-    working_dir: /work/george
-    environment:
-      <<: *service-env
-      PORT: "3001"
-      RAILS_RELATIVE_URL_ROOT: /george
-      DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/george_development
-      REDIS_URL: redis://redis:6379/1
     command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
     ports:
       - "3001:3001"
@@ -204,6 +183,63 @@ services:
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "curl", "-f", "http://localhost:3001/up"]
+
+  ron:
+    <<: *app-base
+    hostname: ron
+    working_dir: /work/ron
+    environment:
+      <<: *service-env
+      PORT: "3002"
+      RAILS_RELATIVE_URL_ROOT: /ron
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/ron_development
+      REDIS_URL: redis://redis:6379/1
+    command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
+    ports:
+      - "3002:3002"
+    depends_on:
+      <<: *app-depends
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "curl", "-f", "http://localhost:3002/up"]
+
+  harry:
+    <<: *app-base
+    hostname: harry
+    working_dir: /work/harry
+    environment:
+      <<: *service-env
+      PORT: "3003"
+      RAILS_RELATIVE_URL_ROOT: /harry
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/harry_development
+      REDIS_URL: redis://redis:6379/2
+    command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
+    ports:
+      - "3003:3003"
+    depends_on:
+      <<: *app-depends
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "curl", "-f", "http://localhost:3003/up"]
+
+  george:
+    <<: *app-base
+    hostname: george
+    working_dir: /work/george
+    environment:
+      <<: *service-env
+      PORT: "3004"
+      RAILS_RELATIVE_URL_ROOT: /george
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cluster}:${POSTGRES_PASSWORD:-cluster}@db:5432/george_development
+      REDIS_URL: redis://redis:6379/3
+    command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
+    ports:
+      - "3004:3004"
+    depends_on:
+      <<: *app-depends
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "curl", "-f", "http://localhost:3004/up"]
 
 volumes:
   pgdata:

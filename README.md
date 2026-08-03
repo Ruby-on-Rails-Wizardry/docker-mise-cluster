@@ -1,18 +1,20 @@
-# wf — multi-app Docker dev cluster (template)
+# wf — multi-app Docker dev cluster (Ubuntu template)
 
-Template starting point for a **multi-app Rails development cluster** (local Docker Compose). **Production** deploys each app with **Kamal** on a VPS (hostname routing), not this compose file — see [AGENTS.md — Production deployment](AGENTS.md#production-deployment-kamal--not-compose).
+Template starting point for a **multi-app Rails development cluster** on **Ubuntu** (local Docker Compose). **Production** deploys each app with **Kamal** on a VPS (hostname routing), not this compose file — see [AGENTS.md — Production deployment](AGENTS.md#production-deployment-kamal--not-compose).
 
 Includes:
 
-- **Prebuilt [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise)** (`ubuntu-mise:dev`, `pull_policy: never`) for **fred**, **george**, and optional **dev** — no cluster image build
+- **Prebuilt [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise)** (`ubuntu-mise:dev`, `pull_policy: never`) for **fred**, **ron**, **harry**, **george**, and optional **dev** — no cluster image build
 - **Host UX** like [ubuntu-sample](../ubuntu-sample/): `.mise.env` (`POSTGRESQL_VERSION=18`), Task + mise tasks at cluster root **and** in each app
 - Shared **Bundler** install + download caches across all apps
 - Shared **Yarn 1** offline mirror + cache folder
-- **nginx** path routing (`/fred/`, `/george/`) + **PostgreSQL** + **Redis**
+- **nginx** path routing (`/fred/`, `/ron/`, `/harry/`, `/george/`) + **PostgreSQL** + **Redis**
 - **Config-driven** app list (`config/apps.yml`)
-- **Git submodules** for independent app repos (**fred**, **george**)
+- **Git submodules** for independent app repos (**fred**, **ron**, **harry**, **george**)
 - Layout: project **`/work`**, tools at runtime into shared **`/cache`** volume (`ubuntu-mise-cache`)
 - **Mise:** development installs at **runtime** into `/cache`; production app images install at **build** only
+- **Compose project name** = directory basename (copy to `wf/` and project is `wf` — no hard-coded name)
+- **Container user** defaults to host `$USER` / `id -u` (match the ubuntu-mise build; no run-time flags)
 
 Clone with apps:
 
@@ -40,7 +42,7 @@ Then edit `config/apps.yml` / `.gitmodules` when adopting into a real project.
 ## Layout
 
 ```
-cluster/
+cluster/   # or wf/ — directory name becomes the Compose project name
 ├── .mise.env                 # POSTGRESQL_VERSION, IMAGE, CACHE_VOLUME
 ├── config/
 │   ├── apps.yml              # SSOT: apps + shared gems (+ url_root)
@@ -54,8 +56,7 @@ cluster/
 │   └── cache-ensure / cache-reset
 ├── nginx/                    # path routing + home page
 ├── docker/postgres/          # per-app DB init
-├── fred/                     # submodule — Task/mise like ubuntu-sample
-├── george/                   # submodule — Task/mise like ubuntu-sample
+├── fred/  ron/  harry/  george/   # submodules — Task/mise like ubuntu-sample
 ├── docker-compose.yml        # prebuilt ubuntu-mise:dev + nginx + db + redis
 ├── Dockerfile                # optional thin layer (not used by default compose)
 ├── mise.toml / Taskfile.yml  # multi-app host UX
@@ -65,25 +66,27 @@ cluster/
 ## Quick start
 
 ```bash
-cd ../ubuntu-mise && task build && cd -
+cd ../ubuntu-mise && task build && cd -   # uses host USER / UID by default
 mise install && task doctor
 task setup
-task up:fred          # or: task up:george | task up:all
-# http://localhost:8080/fred/   (and /george/)
-# direct: http://localhost:3000 / 3001
+task up:fred          # or: task up:ron | up:harry | up:george | up:all
+# http://localhost:8080/fred/   (and /ron/ /harry/ /george/)
+# direct: http://localhost:3001 … 3004
 ```
+
+No need to pass `IMAGE_USER` / `DEV_UID` when running apps if the base image was built with the same host defaults.
 
 App-scoped Task (same shape as ubuntu-sample):
 
 ```bash
 task fred -- setup
 task fred -- shell
-task george -- doctor
+task ron -- doctor
 ```
 
 ## Base image (ubuntu-mise)
 
-**fred** and **george** run the **prebuilt** **`ubuntu-mise:dev`** image (`pull_policy: never`). No cluster image layer.
+All four apps run the **prebuilt** **`ubuntu-mise:dev`** image (`pull_policy: never`). No cluster image layer. **Ubuntu only** for this template.
 
 | Context | How to get the base |
 |---------|---------------------|
@@ -92,6 +95,10 @@ task george -- doctor
 | Custom tag | `IMAGE=my/ubuntu-mise:dev` (must exist locally) |
 
 Shared `/cache` volume: **`ubuntu-mise-cache`** (same default as ubuntu-mise / ubuntu-sample). PostgreSQL major for compose `db` and base client parity: **`.mise.env`** → `POSTGRESQL_VERSION=18`.
+
+**User identity:** `bin/compose` writes host `$USER` / `id -u` / `id -g` into `.env`. Build the base the same way (ubuntu-mise defaults). Override only in `.mise.env.local` if you deliberately use a shared `dev:1000` image.
+
+**Compose project name:** omit `COMPOSE_PROJECT_NAME` so Docker uses the directory name. Copy/clone this tree as `wf/` and the project is `wf`.
 
 Overrides: [`.env.example`](.env.example), [`.mise.env`](.mise.env).
 
@@ -102,13 +109,15 @@ Without Task:
 bin/setup
 bin/setup --docker-build
 bin/compose up fred
-bin/compose up george
-bin/compose up fred george
+bin/compose up ron harry
+bin/compose up fred ron harry george
 
 # Home   → http://localhost:8080/          (nginx; links to apps)
 # Fred   → http://localhost:8080/fred/     (when fred is up)
-# George → http://localhost:8080/george/   (when george is up)
-# Direct ports (debug): fred :3000, george :3001
+# Ron    → http://localhost:8080/ron/
+# Harry  → http://localhost:8080/harry/
+# George → http://localhost:8080/george/
+# Direct ports (debug): fred :3001, ron :3002, harry :3003, george :3004
 # Postgres → localhost:5432  (user/pass cluster / cluster)
 # Redis    → localhost:6379
 
@@ -119,7 +128,7 @@ bin/compose up -d db redis
 bin/compose --profile dev run --rm dev
 ```
 
-Compose starts **only** the services you name **and their dependencies**. Apps depend on `nginx`, `db`, and `redis` (not the other way around), so a single-app `up` still gets the proxy without requiring the sibling app.
+Compose starts **only** the services you name **and their dependencies**. Apps depend on `nginx`, `db`, and `redis` (not the other way around), so a single-app `up` still gets the proxy without requiring sibling apps.
 
 ### Postgres + Redis
 
@@ -127,40 +136,41 @@ Shared compose services (dev credentials only — see `.env.example`):
 
 | Service | Image | Host port | Notes |
 |---------|-------|-----------|--------|
-| `db` | `postgres:18` | **5432** | DBs: `fred_development`, `george_development` (+ `_test`) via `docker/postgres/init-databases.sql` |
-| `redis` | `redis:8-alpine` | **6379** | Fred uses logical DB **0**, George **1** (`REDIS_URL`) |
+| `db` | `postgres:18` | **5432** | DBs: `fred_*`, `ron_*`, `harry_*`, `george_*` (+ `_test`) via `docker/postgres/init-databases.sql` |
+| `redis` | `redis:8-alpine` | **6379** | Logical DBs **0–3** (`REDIS_URL`) |
 
-Apps receive:
-
-| Env | Fred | George |
-|-----|------|--------|
-| `DATABASE_URL` | `postgresql://…@db:5432/fred_development` | `…/george_development` |
-| `REDIS_URL` | `redis://redis:6379/0` | `redis://redis:6379/1` |
-| `POSTGRES_*` | host `db`, user/password from compose | same |
+| App | Port | Path | Database | Redis DB |
+|-----|------|------|----------|----------|
+| fred | 3001 | `/fred` | `fred_development` | 0 |
+| ron | 3002 | `/ron` | `ron_development` | 1 |
+| harry | 3003 | `/harry` | `harry_development` | 2 |
+| george | 3004 | `/george` | `george_development` | 3 |
 
 Development Active Record uses **PostgreSQL** (`pg` gem). Production sample configs still use multi-db SQLite for Kamal. Redis is available via `REDIS_URL` / the `redis` gem; demo apps still use solid_cache / async cable unless you wire Redis stores yourself.
 
 Host `bin/setup` `db:prepare` expects Postgres on **localhost:5432** — start `bin/compose up -d db redis` first, or use `--skip-db` and let containers run `db:prepare`.
 
-Reset **one** app’s development database (leaves the sibling app alone):
+Reset **one** app’s development database (leaves siblings alone):
 
 ```bash
 task db:reset:fred             # or: bin/db-reset fred
-task db:reset:george
-bin/db-reset --docker fred     # rails inside compose if host gems are not ready
+task db:reset:ron
+bin/db-reset --docker harry    # rails inside compose if host gems are not ready
 ```
 
 ### Nginx path routing
 
 `nginx` is the front door (port **8080**). It is intentionally simpler than `partial/nginx`: same path-proxy idea, **no oauth2-proxy**.
 
-Apps **depend on nginx** (plus `db` / `redis`). Nginx does **not** wait for apps, so you can run only fred or only george; a missing backend returns 502 until that app is up.
+Apps **depend on nginx** (plus `db` / `redis`). Nginx does **not** wait for apps, so you can run any subset; a missing backend returns 502 until that app is up.
 
 | Path | Backend | Notes |
 |------|---------|--------|
-| `/` | static `nginx/html/index.html` | Links to both apps |
-| `/fred/` | `fred:3000` | Prefix stripped; app has `RAILS_RELATIVE_URL_ROOT=/fred` |
-| `/george/` | `george:3001` | Same pattern with `/george` |
+| `/` | static `nginx/html/index.html` | Links to all apps |
+| `/fred/` | `fred:3001` | Prefix stripped; `RAILS_RELATIVE_URL_ROOT=/fred` |
+| `/ron/` | `ron:3002` | same pattern |
+| `/harry/` | `harry:3003` | same pattern |
+| `/george/` | `george:3004` | same pattern |
 
 Edit routing in `nginx/nginx.conf`. Keep `url_root` in `config/apps.yml` and `RAILS_RELATIVE_URL_ROOT` in `docker-compose.yml` aligned with those paths.
 
@@ -168,12 +178,12 @@ Always use **`bin/compose`** (not plain `docker compose`) so `config/cache-layou
 
 ## Adopting into a real project
 
-1. Copy/clone this `wf/` tree (or use it as the repo root) with **`--recurse-submodules`**.
+1. Copy/clone this tree (often as **`wf/`**) with **`--recurse-submodules`**. Compose project name follows the directory.
 2. Edit **`config/apps.yml`** — names, paths, ports, `url_root`, databases.
-3. Point **`.gitmodules`** at your app repos (demo apps are already submodules: [fred](https://github.com/Ruby-on-Rails-Wizardry/fred), [george](https://github.com/Ruby-on-Rails-Wizardry/george)).
+3. Point **`.gitmodules`** at your app repos (demo apps: [fred](https://github.com/Ruby-on-Rails-Wizardry/fred), [ron](https://github.com/Ruby-on-Rails-Wizardry/ron), [harry](https://github.com/Ruby-on-Rails-Wizardry/harry), [george](https://github.com/Ruby-on-Rails-Wizardry/george)).
 4. Update root **`package.json`** `workspaces` if JS workspaces change.
-5. Keep **`docker-compose.yml`** app services (ports, `RAILS_RELATIVE_URL_ROOT`) and **`nginx/nginx.conf`** locations in sync with `apps.yml` (MVP: manual; generation later).
-6. Run `bin/setup` and `bin/compose up fred` (or `george` / both).
+5. Keep **`docker-compose.yml`** app services (ports, `RAILS_RELATIVE_URL_ROOT`), **`nginx/nginx.conf`** locations, and **`docker/postgres/init-databases.sql`** in sync with `apps.yml` (MVP: manual; generation later).
+6. Run `bin/setup` and `bin/compose up fred` (or any subset / all four).
 
 ## Cache model
 
@@ -198,9 +208,9 @@ Host warms caches via `bin/setup`; containers use `bin/docker-app` and fall back
 
 ## MVP scope (this version)
 
-**In:** Ubuntu + mise image, compose, shared Bundler/Yarn caches, config apps list, demo fred/george, **nginx path routing**, **Postgres + Redis**.
+**In:** Ubuntu + mise image, compose, shared Bundler/Yarn caches, config apps list, demo **fred / ron / harry / george**, **nginx path routing**, **Postgres + Redis**, host-matched container user, directory-based Compose project name.
 
-**Later:** oauth2-proxy (see `partial/`), compose/nginx generation from `apps.yml`, Arch image variant, full weasily submodule set (ron/harry + shared gem), Redis-backed cable/cache if desired.
+**Later:** oauth2-proxy (see `partial/`), compose/nginx generation from `apps.yml`, shared path-gems, Redis-backed cable/cache if desired.
 
 ## License
 

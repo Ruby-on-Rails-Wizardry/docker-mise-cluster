@@ -53,14 +53,29 @@ else
   warn=1
 fi
 
-for app in fred george; do
-  if [[ -f "${ROOT}/${app}/Gemfile" ]]; then
-    printf 'OK   app %s (Gemfile present)\n' "${app}"
-  else
-    printf 'WARN app %s missing (git submodule update --init %s)\n' "${app}" "${app}"
-    warn=1
-  fi
-done
+printf 'INFO compose project effective=%s' "${COMPOSE_PROJECT_EFFECTIVE}"
+if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
+  printf ' (COMPOSE_PROJECT_NAME override set)\n'
+else
+  printf ' (directory default; unset COMPOSE_PROJECT_NAME)\n'
+fi
+printf 'INFO IMAGE_USER=%s DEV_UID=%s DEV_GID=%s (match host; build base with same defaults)\n' \
+  "${IMAGE_USER}" "${DEV_UID}" "${DEV_GID}"
+
+if [[ -x "${ROOT}/bin/apps" ]]; then
+  while IFS= read -r app; do
+    [[ -n "${app}" ]] || continue
+    if [[ -f "${ROOT}/${app}/Gemfile" ]]; then
+      printf 'OK   app %s (Gemfile present)\n' "${app}"
+    else
+      printf 'WARN app %s missing (git submodule update --init %s)\n' "${app}" "${app}"
+      warn=1
+    fi
+  done < <("${ROOT}/bin/apps" names)
+else
+  printf 'WARN bin/apps not executable\n'
+  warn=1
+fi
 
 if [[ -f "${ROOT}/nginx/nginx.conf" ]]; then
   printf 'OK   nginx/nginx.conf\n'
@@ -70,7 +85,8 @@ else
 fi
 
 printf 'INFO POSTGRESQL_VERSION=%s (db image + base client parity)\n' "${POSTGRESQL_VERSION:-}"
-printf 'INFO front door: http://localhost:8080/  (/fred/ /george/)\n'
+printf 'INFO front door: http://localhost:8080/  (/fred/ /ron/ /harry/ /george/)\n'
+printf 'INFO direct ports: 3001–3004\n'
 
 if [[ "${fail}" -ne 0 ]]; then
   log "doctor: failed"

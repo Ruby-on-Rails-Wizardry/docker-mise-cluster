@@ -7,8 +7,8 @@ CLUSTER="${CLUSTER:-$(basename "${ROOT}")}"
 FLAVOR_BASE="${FLAVOR_BASE:-ubuntu-mise}"
 IMAGE="${IMAGE:-${FLAVOR_BASE}:dev}"
 CACHE_VOLUME="${CACHE_VOLUME:-${FLAVOR_BASE}-cache}"
-# Compose project name
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-docker-mise-cluster}"
+# Compose project: leave COMPOSE_PROJECT_NAME unset so Docker uses the directory
+# name (basename of project-directory). Export only if the operator set it.
 
 load_dotenv_if_unset() {
   local file=$1
@@ -49,12 +49,15 @@ if [[ -z "${SHELL:-}" ]]; then
 fi
 export DEV_UID="${DEV_UID:-$(id -u)}"
 export DEV_GID="${DEV_GID:-$(id -g)}"
-# Cluster containers match the user in the prebuilt base image.
-export IMAGE_USER="${IMAGE_USER:-dev}"
+# Match host login by default (same as ubuntu-mise / ubuntu-sample).
+# Override in .mise.env.local only if the base image was built for another user.
+export IMAGE_USER="${IMAGE_USER:-${USER}}"
 PROJECT="${PROJECT:-${ROOT}}"
 CACHE_ROOT="${CACHE_ROOT:-/cache}"
 : "${POSTGRESQL_VERSION:=}"
 REDIS_VERSION="${REDIS_VERSION:-8}"
+# Effective Compose project name (Docker default = directory basename).
+COMPOSE_PROJECT_EFFECTIVE="${COMPOSE_PROJECT_NAME:-${CLUSTER}}"
 
 log() {
   printf '%s: %s\n' "${CLUSTER}" "$*" >&2
@@ -154,7 +157,8 @@ POSTGRESQL_VERSION=${POSTGRESQL_VERSION:-}
 REDIS_VERSION=${REDIS_VERSION}
 TZ=${TZ}
 ROOT=${ROOT}
-COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
-APPS=$( [[ -x "${ROOT}/bin/apps" ]] && "${ROOT}/bin/apps" names | tr '\n' ' ' || echo "fred george" )
+COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-}
+COMPOSE_PROJECT_EFFECTIVE=${COMPOSE_PROJECT_EFFECTIVE}
+APPS=$( [[ -x "${ROOT}/bin/apps" ]] && "${ROOT}/bin/apps" names | tr '\n' ' ' || echo "fred ron harry george" )
 EOF
 }
