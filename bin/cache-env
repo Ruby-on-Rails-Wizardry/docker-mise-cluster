@@ -1,62 +1,27 @@
 #!/usr/bin/env bash
-# Load config/cache-layout.env and export absolute BUNDLE_* / YARN_* paths.
+# Export package-cache paths under CACHE_ROOT (default /cache — the Docker volume).
+# Image ENV already sets these; this is for host shells that source it intentionally.
 #
-# Source from scripts or an interactive shell:
 #   source bin/cache-env
-#
-# Optional args when executed (not when sourced):
-#   bin/cache-env                 # print exported vars
-#   bin/cache-env --write-yarnrc  # refresh .yarnrc offline-mirror from layout
+#   bin/cache-env                 # print
+#   bin/cache-env --write-yarnrc  # classic Yarn offline-mirror → /cache/yarn
 
 _cache_env_main() {
-  local root layout prefix
-  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-  # Prefer container workspace when this tree is mounted at /work (or WORKSPACE).
-  if [[ -n "${WORKSPACE:-}" && -f "${WORKSPACE}/config/cache-layout.env" ]]; then
-    root="${WORKSPACE}"
-  elif [[ -f /work/config/cache-layout.env ]]; then
-    root="/work"
-  fi
-
-
-  layout="${root}/config/cache-layout.env"
-  if [[ ! -f "${layout}" ]]; then
-    echo "error: missing ${layout}" >&2
-    return 1
-  fi
-
-  # shellcheck disable=SC1090
-  set -a
-  # shellcheck source=config/cache-layout.env
-  source "${layout}"
-  set +a
-
-  : "${CACHE_BUNDLE:?CACHE_BUNDLE missing in cache-layout.env}"
-  : "${CACHE_RUBYGEMS:?CACHE_RUBYGEMS missing in cache-layout.env}"
-  : "${CACHE_YARN_FOLDER:?CACHE_YARN_FOLDER missing in cache-layout.env}"
-  : "${CACHE_YARN_MIRROR:?CACHE_YARN_MIRROR missing in cache-layout.env}"
-
-  prefix="${root}"
-  export BUNDLE_PATH="${BUNDLE_PATH:-${prefix}/${CACHE_BUNDLE}}"
-  export BUNDLE_CACHE_PATH="${BUNDLE_CACHE_PATH:-${prefix}/${CACHE_RUBYGEMS}}"
-  export YARN_CACHE_FOLDER="${YARN_CACHE_FOLDER:-${prefix}/${CACHE_YARN_FOLDER}}"
-  export YARN_OFFLINE_MIRROR="${YARN_OFFLINE_MIRROR:-${prefix}/${CACHE_YARN_MIRROR}}"
-
-  export CACHE_BUNDLE CACHE_RUBYGEMS CACHE_YARN_MIRROR CACHE_YARN_FOLDER
+  export CACHE_ROOT="${CACHE_ROOT:-/cache}"
+  export BUNDLE_PATH="${BUNDLE_PATH:-${CACHE_ROOT}/bundle}"
+  export BUNDLE_CACHE_PATH="${BUNDLE_CACHE_PATH:-${CACHE_ROOT}/rubygems}"
+  export YARN_CACHE_FOLDER="${YARN_CACHE_FOLDER:-${CACHE_ROOT}/yarn-cache}"
+  export YARN_OFFLINE_MIRROR="${YARN_OFFLINE_MIRROR:-${CACHE_ROOT}/yarn}"
 }
 
 _cache_env_write_yarnrc() {
-  local root="${1}"
-  local mirror_rel="${CACHE_YARN_MIRROR}"
+  local root
+  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   cat > "${root}/.yarnrc" <<EOF
-# Classic Yarn 1.x — generated offline-mirror path from config/cache-layout.env.
-# Regenerate: bin/cache-env --write-yarnrc  (also run from bin/setup)
-# YARN_CACHE_FOLDER is set via environment (not this file).
-
-yarn-offline-mirror "./${mirror_rel#./}"
+# Classic Yarn 1.x — offline mirror on the shared cache volume (/cache/yarn).
+# Prefer: task warm (writes this from inside the container with absolute path).
+yarn-offline-mirror "${YARN_OFFLINE_MIRROR}"
 yarn-offline-mirror-pruning true
-
 --install.ignore-engines true
 EOF
 }
@@ -64,22 +29,21 @@ EOF
 _cache_env_main || return $?
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   case "${1:-}" in
     --write-yarnrc)
-      _cache_env_write_yarnrc "${root}"
-      echo "Wrote ${root}/.yarnrc (offline-mirror → ${CACHE_YARN_MIRROR})"
+      _cache_env_write_yarnrc
+      echo "Wrote .yarnrc (offline-mirror → ${YARN_OFFLINE_MIRROR})"
       ;;
     "")
-      printf 'BUNDLE_PATH=%s\nBUNDLE_CACHE_PATH=%s\nYARN_CACHE_FOLDER=%s\nYARN_OFFLINE_MIRROR=%s\n' \
-        "${BUNDLE_PATH}" "${BUNDLE_CACHE_PATH}" "${YARN_CACHE_FOLDER}" "${YARN_OFFLINE_MIRROR}"
+      printf 'CACHE_ROOT=%s\nBUNDLE_PATH=%s\nBUNDLE_CACHE_PATH=%s\nYARN_CACHE_FOLDER=%s\nYARN_OFFLINE_MIRROR=%s\n' \
+        "${CACHE_ROOT}" "${BUNDLE_PATH}" "${BUNDLE_CACHE_PATH}" "${YARN_CACHE_FOLDER}" "${YARN_OFFLINE_MIRROR}"
       ;;
     -h|--help)
       cat <<'EOF'
 Usage:
-  source bin/cache-env          # export paths for current shell
-  bin/cache-env                 # print absolute cache paths
-  bin/cache-env --write-yarnrc  # sync .yarnrc offline-mirror from layout
+  source bin/cache-env
+  bin/cache-env
+  bin/cache-env --write-yarnrc
 EOF
       ;;
     *)

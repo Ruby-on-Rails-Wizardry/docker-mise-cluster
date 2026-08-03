@@ -6,7 +6,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLUSTER="${CLUSTER:-$(basename "${ROOT}")}"
 FLAVOR_BASE="${FLAVOR_BASE:-ubuntu-mise}"
 IMAGE="${IMAGE:-${FLAVOR_BASE}:dev}"
-CACHE_VOLUME="${CACHE_VOLUME:-${FLAVOR_BASE}-cache}"
+# Single shared Docker volume for /cache (mise, gems, yarn). Not project-prefixed.
+CACHE_VOLUME="${CACHE_VOLUME:-cache}"
 # Compose project: leave COMPOSE_PROJECT_NAME unset so Docker uses the directory
 # name (basename of project-directory). Export only if the operator set it.
 

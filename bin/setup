@@ -1,48 +1,33 @@
 #!/usr/bin/env bash
-# Bootstrap this cluster after clone/copy (idempotent).
+# Bootstrap this cluster after clone (idempotent).
 #
-# Installs mise tools, downloads gems + node packages into shared host caches,
-# installs them for local use, and prepares each app database listed in
-# config/apps.yml. Run on the host before docker compose so containers can
-# prefer those cached downloads (see bin/docker-app).
+#   1. Optional: ensure ubuntu-mise:dev (--docker-build)
+#   2. Warm shared volume `cache` (mise, gems, yarn) via bin/warm
+#   3. Optional: prepare app databases on host if Ruby is available
 #
 # Usage:
 #   bin/setup
-#   bin/setup --reset          # also reset app databases
-#   bin/setup --docker-build   # ensure prebuilt ubuntu-mise:dev (no cluster image)
-#   bin/setup --skip-mise      # assume Ruby/Node/Yarn already on PATH
-#   bin/setup --skip-js        # skip yarn install / yarn cache warm
-#   bin/setup --skip-db        # skip rails db:prepare
-#   bin/setup --skip-apps      # only root gems + yarn (no per-app bundle/db)
-#   bin/setup --skip-cache     # install only; do not run bundle cache / package
-#
-# Apps use prebuilt IMAGE (default ubuntu-mise:dev). --docker-build only ensures
-# that base exists (builds sibling ../ubuntu-mise when missing). No cluster layer.
-
+#   bin/setup --docker-build
+#   bin/setup --skip-warm
+#   bin/setup --skip-db
+#   bin/setup --reset          # db:reset per app when preparing DBs
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# shellcheck source=bin/cache-env
-source "${ROOT}/bin/cache-env"
-"${ROOT}/bin/cache-env" --write-yarnrc >/dev/null
+# shellcheck source=lib.sh
+source "${ROOT}/bin/lib.sh"
 
-SKIP_MISE=0
-SKIP_JS=0
+SKIP_WARM=0
 SKIP_DB=0
-SKIP_APPS=0
-SKIP_CACHE=0
 DOCKER_BUILD=0
 RESET_DB=0
 
 for arg in "$@"; do
   case "$arg" in
-    --skip-mise) SKIP_MISE=1 ;;
-    --skip-js) SKIP_JS=1 ;;
+    --skip-warm) SKIP_WARM=1 ;;
     --skip-db) SKIP_DB=1 ;;
-    --skip-apps) SKIP_APPS=1 ;;
-    --skip-cache) SKIP_CACHE=1 ;;
     --docker-build) DOCKER_BUILD=1 ;;
     --reset) RESET_DB=1 ;;
     -h|--help)
@@ -61,303 +46,43 @@ step() {
   printf '\n== %s ==\n' "$1"
 }
 
-run() {
-  echo "+ $*"
-  "$@"
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "error: required command not found: $1" >&2
-    exit 1
-  fi
-}
-
-activate_mise() {
-  if command -v mise >/dev/null 2>&1; then
-    # shellcheck disable=SC1091
-    eval "$(mise activate bash)"
-  fi
-}
-
-link_bundle_config() {
-  local target="$1"
-  mkdir -p "$(dirname "${target}")"
-  ln -sfn "${ROOT}/config/bundler-flags.yml" "${target}"
-}
-
-cache_gems() {
-  run bundle cache --all-platforms
-}
-
 step "Cluster root"
 echo "$ROOT"
 step "Apps from config/apps.yml"
 "${ROOT}/bin/apps" yaml
 
-# --- mise --------------------------------------------------------------------
-if [[ "$SKIP_MISE" -eq 0 ]]; then
-  step "Installing mise tools (mise.toml)"
-  if command -v mise >/dev/null 2>&1; then
-    run mise trust "$ROOT/mise.toml" || true
-    run mise install
-    activate_mise
-  else
-    echo "warning: mise not found; using whatever Ruby/Node/Yarn are on PATH"
-    echo "         install mise from https://mise.jdx.dev for pinned versions"
-  fi
+if [[ "$DOCKER_BUILD" -eq 1 ]]; then
+  step "Ensuring base image ${IMAGE}"
+  ensure_image
+fi
+
+if [[ "$SKIP_WARM" -eq 0 ]]; then
+  step "Warming shared cache volume (${CACHE_VOLUME} → /cache)"
+  "${ROOT}/bin/warm"
 else
-  step "Skipping mise (--skip-mise)"
-  activate_mise
+  step "Skipping warm (--skip-warm)"
 fi
 
-require_cmd ruby
-require_cmd bundle
-if [[ "$SKIP_JS" -eq 0 ]]; then
-  require_cmd node
-  require_cmd yarn
-fi
-
-echo "ruby:  $(ruby -v)"
-echo "bundle: $(bundle -v)"
-if [[ "$SKIP_JS" -eq 0 ]]; then
-  echo "node:  $(node -v)"
-  echo "yarn:  $(yarn -v)"
-fi
-
-# --- cache directories -------------------------------------------------------
-step "Ensuring shared cache directories (from config/cache-layout.env)"
-mkdir -p \
-  "${CACHE_BUNDLE}" \
-  "${CACHE_RUBYGEMS}" \
-  "${CACHE_YARN_MIRROR}" \
-  "${CACHE_YARN_FOLDER}"
-touch \
-  "${CACHE_BUNDLE}/.gitkeep" \
-  "${CACHE_RUBYGEMS}/.gitkeep" \
-  "${CACHE_YARN_MIRROR}/.gitkeep" \
-  "${CACHE_YARN_FOLDER}/.gitkeep"
-echo "BUNDLE_PATH=${BUNDLE_PATH}"
-echo "BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH}"
-echo "YARN_CACHE_FOLDER=${YARN_CACHE_FOLDER}"
-echo "YARN_OFFLINE_MIRROR=${YARN_OFFLINE_MIRROR}"
-
-# Bundler flags SSOT → root + each app
-link_bundle_config "${ROOT}/.bundle/config"
-while IFS= read -r app_path; do
-  [[ -z "${app_path}" ]] && continue
-  if [[ -d "${ROOT}/${app_path}" ]]; then
-    link_bundle_config "${ROOT}/${app_path}/.bundle/config"
-  fi
-done < <("${ROOT}/bin/apps" paths)
-
-# --- root gems ---------------------------------------------------------------
-if [[ -f "${ROOT}/Gemfile" ]]; then
-  step "Installing root gems → shared bundle path"
-  if bundle check >/dev/null 2>&1; then
-    echo "Root bundle already satisfied"
-  else
-    run bundle install
-  fi
-  if [[ "$SKIP_CACHE" -eq 0 ]]; then
-    step "Packaging root gems into rubygems download cache"
-    cache_gems
-  fi
-fi
-
-# --- app gems + databases ----------------------------------------------------
-setup_app() {
-  local app_path="$1"
-  local app_root="${ROOT}/${app_path}"
-
-  if [[ ! -d "${app_root}" ]]; then
-    echo "warning: app path missing (submodule not initialized?): ${app_path}"
-    return 0
-  fi
-  if [[ ! -f "${app_root}/Gemfile" ]]; then
-    echo "warning: no Gemfile in ${app_path}; skipping"
-    return 0
-  fi
-
-  step "Setting up ${app_path}"
-  (
-    cd "${app_root}"
-    if bundle check >/dev/null 2>&1; then
-      echo "${app_path} bundle already satisfied"
-    else
-      run bundle install
-    fi
-
-    if [[ "$SKIP_CACHE" -eq 0 ]]; then
-      echo "Packaging ${app_path} gems into rubygems download cache"
-      cache_gems
-    fi
-
-    if [[ "$SKIP_DB" -eq 0 ]] && [[ -x bin/rails || -f bin/rails ]]; then
-      if [[ "$RESET_DB" -eq 1 ]]; then
-        run bin/rails db:prepare
-        run bin/rails db:reset
-      else
-        run bin/rails db:prepare
-      fi
-      run bin/rails log:clear tmp:clear || true
-    else
-      echo "Skipping database for ${app_path}"
-    fi
-  )
-}
-
-if [[ "$SKIP_APPS" -eq 0 ]]; then
+# Optional host-side db:prepare when Ruby is already available and Postgres is up.
+if [[ "$SKIP_DB" -eq 0 ]] && command -v ruby >/dev/null 2>&1 && command -v bundle >/dev/null 2>&1; then
+  step "Preparing app databases (host Ruby; needs Postgres on localhost:5432)"
   while IFS= read -r app_path; do
     [[ -z "${app_path}" ]] && continue
-    setup_app "${app_path}"
+    app_root="${ROOT}/${app_path}"
+    [[ -x "${app_root}/bin/rails" || -f "${app_root}/bin/rails" ]] || continue
+    (
+      cd "${app_root}"
+      if [[ "$RESET_DB" -eq 1 ]]; then
+        bin/rails db:prepare && bin/rails db:reset
+      else
+        bin/rails db:prepare || echo "warning: db:prepare failed for ${app_path} (start db with: bin/compose up -d db)"
+      fi
+    ) || true
   done < <("${ROOT}/bin/apps" paths)
 else
-  step "Skipping app setup (--skip-apps)"
+  step "Skipping host db:prepare (use --skip-db, or apps prepare on first container boot)"
 fi
 
-# --- classic Yarn 1.x --------------------------------------------------------
-if [[ "$SKIP_JS" -eq 0 ]]; then
-  yarn_major="$(yarn --version | cut -d. -f1 || echo 0)"
-  if [[ "$yarn_major" -ne 1 ]]; then
-    echo "error: classic Yarn 1.x required (got $(yarn --version))" >&2
-    echo "       check mise.toml (yarn = \"1.22.22\") and re-run mise install" >&2
-    exit 1
-  fi
-
-  if [[ -f "${ROOT}/package.json" ]]; then
-    step "Installing Yarn 1 workspaces (offline-mirror → .cache/yarn)"
-    run yarn install --frozen-lockfile 2>/dev/null || run yarn install
-
-    if [[ "$SKIP_CACHE" -eq 0 ]]; then
-      step "Verifying classic Yarn offline mirror (--offline)"
-      if yarn install --frozen-lockfile --offline; then
-        echo "Yarn offline mirror is complete"
-      else
-        echo "warning: yarn --offline failed; re-running online install to fill mirror"
-        run yarn install
-        if yarn install --frozen-lockfile --offline; then
-          echo "Yarn offline mirror is complete after refill"
-        else
-          echo "warning: yarn offline mirror still incomplete"
-        fi
-      fi
-    fi
-  else
-    echo "No root package.json; skipping yarn"
-  fi
-else
-  step "Skipping Yarn install (--skip-js)"
-fi
-
-# --- summary -----------------------------------------------------------------
-step "Cache summary"
-gem_count=0
-yarn_count=0
-if [[ -d .cache/rubygems ]]; then
-  gem_count="$(find .cache/rubygems -type f \( -name '*.gem' -o -name '*.gemspec' \) 2>/dev/null | wc -l | tr -d ' ')"
-fi
-if [[ -d .cache/yarn ]]; then
-  yarn_count="$(find .cache/yarn -type f ! -name '.gitkeep' 2>/dev/null | wc -l | tr -d ' ')"
-fi
-echo "  .cache/rubygems   : ${gem_count} packaged gem artifacts"
-echo "  .cache/bundle     : shared install tree"
-echo "  .cache/yarn       : ${yarn_count} classic offline-mirror tarballs"
-echo "  .cache/yarn-cache : classic yarn --cache-folder"
-echo "  node_modules      : $( [[ -d node_modules ]] && echo present || echo missing )"
-
-# Resolve local ubuntu-mise (or override) so fred/george can FROM it.
-find_ubuntu_mise_root() {
-  if [[ -n "${UBUNTU_MISE_ROOT:-}" && -f "${UBUNTU_MISE_ROOT}/Dockerfile" ]]; then
-    (cd "${UBUNTU_MISE_ROOT}" && pwd)
-    return 0
-  fi
-  # Nested under docker-mise umbrella: cluster/../ubuntu-mise
-  if [[ -f "${ROOT}/../ubuntu-mise/Dockerfile" ]]; then
-    (cd "${ROOT}/../ubuntu-mise" && pwd)
-    return 0
-  fi
-  return 1
-}
-
-ensure_base_image() {
-  local base="${BASE_IMAGE:-ubuntu-mise:dev}"
-  local sibling=""
-
-  if docker image inspect "${base}" >/dev/null 2>&1; then
-    echo "Base image present: ${base}"
-    return 0
-  fi
-
-  if sibling="$(find_ubuntu_mise_root)"; then
-    step "Building missing base image ${base} from ${sibling}"
-    (
-      cd "${sibling}"
-      export IMAGE="${base}"
-      export DEV_UID="${DEV_UID:-$(id -u)}"
-      export DEV_GID="${DEV_GID:-$(id -g)}"
-      if [[ -x ./bin/build ]]; then
-        run ./bin/build
-      else
-        echo "error: ${sibling}/bin/build not executable" >&2
-        exit 1
-      fi
-    )
-    return 0
-  fi
-
-  cat <<EOF >&2
-error: base image ${base} is not available locally, and no ubuntu-mise tree was found.
-
-  Build the base first, then re-run with --docker-build:
-    # docker-mise umbrella
-    task ubuntu:build
-    # or standalone ubuntu-mise clone
-    cd /path/to/ubuntu-mise && ./bin/build
-
-  Or point at a clone:
-    UBUNTU_MISE_ROOT=/path/to/ubuntu-mise bin/setup --docker-build
-
-  Or set a different parent:
-    BASE_IMAGE=my/ubuntu-mise:dev bin/setup --docker-build
-EOF
-  exit 1
-}
-
-# Always ensure base image when --docker-build; also soft-check otherwise via compose.
-if [[ "$DOCKER_BUILD" -eq 1 ]]; then
-  step "Ensuring prebuilt base image (${IMAGE:-ubuntu-mise:dev})"
-  require_cmd docker
-  # Prefer lib.sh ensure when available
-  if [[ -f "${ROOT}/bin/lib.sh" ]]; then
-    # shellcheck source=lib.sh
-    source "${ROOT}/bin/lib.sh"
-    ensure_image
-  else
-    ensure_base_image
-  fi
-fi
-
-step "Setup complete"
-mapfile -t APP_NAMES < <("${ROOT}/bin/apps" names)
-cat <<EOF
-Host tools and download caches are ready.
-
-  Layout:         ${ROOT}/config/cache-layout.env
-  Apps:           ${ROOT}/config/apps.yml  (${APP_NAMES[*]:-none})
-  Gem installs:   ${BUNDLE_PATH}
-  Gem downloads:  ${BUNDLE_CACHE_PATH}
-  Yarn mirror:    ${YARN_OFFLINE_MIRROR}
-  Yarn cache:     ${YARN_CACHE_FOLDER}
-  App image:      ${IMAGE:-ubuntu-mise:dev}  (prebuilt; pull_policy: never)
-
-Recommended flow:
-  cd ../ubuntu-mise && task build   # or: task setup -- --docker-build
-  bin/compose up -d db redis        # Postgres/Redis for host db:prepare
-  bin/setup                         # host caches + per-app gems
-  bin/compose up fred               # or: george | fred george
-  # nginx → http://localhost:8080/  ( /fred/ and/or /george/ )
-  # always use bin/compose so .env + cache-layout.env load
-
-Re-run anytime; the script is idempotent.
-EOF
+step "Done"
+echo "Next: task up:fred   # or task up:all"
+echo "      http://localhost:8080/fred/"

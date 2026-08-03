@@ -47,9 +47,9 @@ else
 fi
 
 if docker volume inspect "${CACHE_VOLUME}" >/dev/null 2>&1; then
-  printf 'OK   volume %s\n' "${CACHE_VOLUME}"
+  printf 'OK   volume %s → /cache\n' "${CACHE_VOLUME}"
 else
-  printf 'WARN volume %s missing (created on first bin/compose)\n' "${CACHE_VOLUME}"
+  printf 'WARN volume %s missing (created by task warm / bin/compose)\n' "${CACHE_VOLUME}"
   warn=1
 fi
 

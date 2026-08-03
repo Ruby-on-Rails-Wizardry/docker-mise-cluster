@@ -20,7 +20,8 @@ Reference trees (do not treat as the product):
 | App layout | **Git submodules** (`fred`, `ron`, `harry`, `george` → independent repos) |
 | App ports / paths | Simple name paths; ports from **3001**: fred `/fred:3001`, ron `/ron:3002`, harry `/harry:3003`, george `/george:3004` |
 | **Compose project name** | **Directory basename** — do **not** hardcode `COMPOSE_PROJECT_NAME` (copy to `wf/` → project `wf`) |
-| **Container user** | Baked into **ubuntu-mise** at **build** (host `$USER`/`DEV_UID`/`DEV_GID` via `task build`); compose does **not** pass user/UID at run time |
+| **Container user** | Baked into **ubuntu-mise** at **build**; compose does **not** pass user/UID at run time |
+| **Cache** | One Docker volume named **`cache`** → `/cache`; fill with **`task warm`** (crawl Gemfile / package.json) |
 | **Production deploy** | **N Kamal apps, one VPS** (Approach A): each app has its own image + `config/deploy.yml`; **kamal-proxy** routes by **hostname**. Not `docker compose` of this cluster in prod. |
 | Host UX | Cluster + each app: **mise** + **Task** like ubuntu-sample (`.mise.env` with `POSTGRESQL_VERSION`, `bin/*`, mirrored tasks). Cluster orchestrates multi-app + **nginx** path routing. |
 | Yarn | **Classic 1.22.x** (not Berry) |
@@ -55,8 +56,8 @@ App code changes are committed **inside** each app repo, then the parent cluster
 
 ## Rules
 
-1. Cache paths only in **`config/cache-layout.env`**; use **`bin/cache-env`** / **`bin/compose`**.
-2. App list only in **`config/apps.yml`**; `bin/setup` and `bin/apps` read it. Keep **`compose.yml`** services, **`nginx/nginx.conf`**, and **`docker/postgres/init-databases.sql`** in sync for MVP (`port`, `url_root` ↔ `RAILS_RELATIVE_URL_ROOT` + nginx `location` + DB names). Shared app shape lives in the `x-app` anchor — per-app blocks are deltas only.
+1. **One cache:** volume **`cache`** → `/cache` (image ENV for mise/bundle/yarn). Warm with **`bin/warm`**. Do not reintroduce host `.cache` dual paths.
+2. App list only in **`config/apps.yml`**; `bin/setup` and `bin/apps` read it. Keep **`compose.yml`** services, **`nginx/nginx.conf`**, and **`docker/postgres/init-databases.sql`** in sync (`port`, `url_root`, DB). Shared app shape: `x-app` anchor.
 3. Bundler flags only in **`config/bundler-flags.yml`** (symlinked as `.bundle/config`).
 4. Do **not** set `BUNDLE_APP_CONFIG` to the cluster root when running app Gemfiles.
 5. Prefer `bundle install --local` / yarn `--offline` before network.
@@ -148,19 +149,14 @@ bin/db-reset --host george     # force host rails (after bin/setup)
 ## Common tasks
 
 ```bash
-mise install                   # Task + node/yarn from mise.toml
-task setup                     # or bin/setup
-task setup -- --docker-build
-task db                        # optional: compose up -d db redis
-task db:reset:fred             # drop/create/schema/seed one app DB
-task up:fred                   # nginx + db + redis + fred only
-task up:ron
-task up:all                    # all four apps + shared deps
+mise install                   # Task on host
+cd ../ubuntu-mise && task build && cd -
+task warm                      # volume cache → /cache
+task up:fred                   # or up:all
+task db:reset:fred
 task compose -- ps
-# http://localhost:8080/  → home; /fred/ /ron/ /harry/ /george/ via proxy
 task shell:dev
 task apps
-source bin/cache-env && cd fred && bin/rails console
 ```
 
 `bin/*` remains the implementation; Task is optional host UX (same pattern as ubuntu-mise).

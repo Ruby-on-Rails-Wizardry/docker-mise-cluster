@@ -3,28 +3,20 @@
 # bin/* implements the same commands without Task.
 #
 # Prebuilt base only: IMAGE=ubuntu-mise:dev (pull_policy: never).
-#   cd ../ubuntu-mise && task build   # uses host USER / UID by default
-#   task setup
+#   cd ../ubuntu-mise && task build
+#   task warm
 #   task up:fred          # or up:ron | up:harry | up:george | up:all
-#   # http://localhost:8080/fred/ … /george/
 #
-# Apps are submodules with their own Task/mise like ubuntu-sample.
-# Compose project name = directory basename (do not hardcode).
+# Shared volume `cache` → /cache. Compose project name = directory basename.
 
 version: "3"
 
 env:
   FLAVOR_BASE: ubuntu-mise
   IMAGE: '{{.IMAGE | default "ubuntu-mise:dev"}}'
-  CACHE_VOLUME: '{{.CACHE_VOLUME | default "ubuntu-mise-cache"}}'
-  IMAGE_USER:
-    sh: 'printf %s "${IMAGE_USER:-$(id -un 2>/dev/null || echo dev)}"'
+  CACHE_VOLUME: '{{.CACHE_VOLUME | default "cache"}}'
   PROJECT:
     sh: 'printf %s "${PROJECT:-{{.USER_WORKING_DIR}}}"'
-  DEV_UID:
-    sh: 'printf %s "${DEV_UID:-$(id -u)}"'
-  DEV_GID:
-    sh: 'printf %s "${DEV_GID:-$(id -g)}"'
 
 tasks:
   default:
@@ -43,9 +35,14 @@ tasks:
       - ./bin/doctor
 
   setup:
-    desc: "Host bootstrap + warm caches (task setup -- --skip-db)"
+    desc: "Ensure image (optional) + warm cache (task setup -- --docker-build)"
     cmds:
       - ./bin/setup {{.CLI_ARGS}}
+
+  warm:
+    desc: Warm volume cache (crawl Gemfile / package.json inside the image)
+    cmds:
+      - ./bin/warm
 
   cache:ensure:
     desc: Create the shared /cache volume

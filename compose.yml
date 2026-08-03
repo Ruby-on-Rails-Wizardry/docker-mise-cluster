@@ -1,24 +1,15 @@
 # Multi-app dev cluster: prebuilt ubuntu-mise:dev + nginx + Postgres + Redis.
 #
-# No cluster image build — apps use the local base tag only (pull_policy: never).
-# Build the base first:  cd ../ubuntu-mise && task build
+# Build base first:  cd ../ubuntu-mise && task build
+# Warm caches:       task warm
+# Run:               task up:fred | task up:all
 #
-# Cache *relative* paths: config/cache-layout.env (via bin/compose --env-file).
-# Always run via: bin/compose …  (writes .env + loads cache-layout.env)
-# App list SSOT: config/apps.yml  (keep compose services in sync for MVP)
+# Single shared volume `cache` → /cache (mise, gems, yarn — image ENV layout).
+# Compose project name = directory basename. Always use bin/compose.
 #
-# Prefer host-warmed caches: bin/setup && bin/compose up fred
-# Project mount: cluster root → /work. Compose project name = directory basename.
-#
-# Per-app services only set what differs (path, port, DB, redis index).
-# Shared app shape: x-app (image, volumes, depends_on, command, healthcheck).
+# Per-app services only set deltas (path, port, DB, redis). Shared shape: x-app.
 
-x-cache-env: &cache-env
-  BUNDLE_PATH: /work/${CACHE_BUNDLE:-.cache/bundle}
-  BUNDLE_CACHE_PATH: /work/${CACHE_RUBYGEMS:-.cache/rubygems}
-  YARN_CACHE_FOLDER: /work/${CACHE_YARN_FOLDER:-.cache/yarn-cache}
-
-# Image USER/HOME are baked at ubuntu-mise build — do not override here.
+# Image USER/HOME and BUNDLE_*/YARN_*/MISE_* under /cache are baked into ubuntu-mise.
 x-runtime-env: &runtime-env
   WORKSPACE: /work
   CACHE_ROOT: /cache
@@ -34,9 +25,8 @@ x-db-env: &db-env
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cluster}
 
 x-service-env: &service-env
-  <<: [*cache-env, *runtime-env, *db-env]
+  <<: [*runtime-env, *db-env]
 
-# Shared by every Rails app service (and optional `dev` shell).
 x-app: &app
   image: ${IMAGE:-ubuntu-mise:dev}
   pull_policy: never
@@ -45,9 +35,7 @@ x-app: &app
     <<: *service-env
   volumes:
     - .:/work:cached
-    - type: volume
-      source: mise-cache
-      target: /cache
+    - cache:/cache
   stdin_open: true
   tty: true
   depends_on:
@@ -63,7 +51,6 @@ x-app: &app
     timeout: 5s
     retries: 12
     start_period: 90s
-    # PORT comes from each service's environment
     test: ["CMD-SHELL", "curl -fsS \"http://127.0.0.1:$${PORT}/up\" >/dev/null"]
 
 services:
@@ -74,7 +61,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cluster}
       POSTGRES_DB: postgres
     volumes:
-      # Postgres 18+ volume path (not .../data): docker-library/postgres#1259
       - pgdata:/var/lib/postgresql
       - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
     ports:
@@ -97,7 +83,6 @@ services:
       start_period: 5s
       test: ["CMD", "redis-cli", "ping"]
 
-  # Path routing; apps depend on nginx (not the reverse) so one-app up still works.
   nginx:
     image: nginx:1.27-alpine
     ports:
@@ -113,7 +98,6 @@ services:
       start_period: 5s
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
 
-  # Optional interactive shell (whole cluster tree): bin/compose --profile dev run --rm dev
   dev:
     <<: *app
     profiles: ["dev"]
@@ -126,10 +110,7 @@ services:
     healthcheck:
       disable: true
 
-  # --- Apps (only deltas; keep in sync with config/apps.yml) -----------------
-  #   bin/compose up fred
-  #   bin/compose up ron harry
-  #   bin/compose up fred ron harry george
+  # --- Apps (deltas only; keep in sync with config/apps.yml) -----------------
 
   fred:
     <<: *app
@@ -181,5 +162,6 @@ services:
 
 volumes:
   pgdata:
-  mise-cache:
-    name: ${CACHE_VOLUME:-ubuntu-mise-cache}
+  # Single shared tool/package cache (mise, gems, yarn). Name is just `cache`.
+  cache:
+    name: cache

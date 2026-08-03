@@ -1,41 +1,31 @@
 #!/usr/bin/env bash
-# Start a Rails app inside the Ubuntu+mise dev container, preferring host-warmed caches.
-#
-# Expects compose (via bin/compose) to set BUNDLE_PATH, BUNDLE_CACHE_PATH,
-# YARN_CACHE_FOLDER from config/cache-layout.env. Falls back to bin/cache-env.
+# Start a Rails app inside the Ubuntu+mise dev container.
+# Prefer a prior `bin/warm` so gems/yarn/mise are already on the cache volume.
 
 set -euo pipefail
 
 PORT="${PORT:-3000}"
 APP_NAME="$(basename "$(pwd)")"
 
-# Cluster root: WORKSPACE (/work) from compose / image env.
 CLUSTER_ROOT="${WORKSPACE:-/work}"
-if [[ ! -f "${CLUSTER_ROOT}/config/cache-layout.env" ]]; then
+if [[ ! -f "${CLUSTER_ROOT}/bin/docker-app" ]]; then
   CLUSTER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fi
 
-# Dev contract: language tools via mise at **runtime**, installed into /cache
-# (compose volume → MISE_DATA_DIR). Production images install at **build** only.
-# Host bind-mount replaces /work; app dirs have their own mise.toml.
-# Prefer MISE_TRUSTED_CONFIG_PATHS (compose/Dockerfile); trust is a fallback.
+# Image ENV already points BUNDLE_*/YARN_*/MISE_* at /cache. Dev: mise at runtime.
 if command -v mise >/dev/null 2>&1; then
   mise trust "${CLUSTER_ROOT}" 2>/dev/null || true
   mise trust . 2>/dev/null || true
   eval "$(mise activate bash)" 2>/dev/null || true
-  echo "== ${APP_NAME}: mise install (runtime; cache MISE_DATA_DIR=${MISE_DATA_DIR:-/cache/mise})"
-  # Prefer project pins under /work (bind-mounted). Idempotent when /cache is warm.
+  echo "== ${APP_NAME}: mise install (cache MISE_DATA_DIR=${MISE_DATA_DIR:-/cache/mise})"
   (cd "${CLUSTER_ROOT}" && mise install) || mise install
   mise reshim 2>/dev/null || true
   eval "$(mise activate bash)" 2>/dev/null || true
 fi
 
-# shellcheck source=bin/cache-env
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cache-env"
-
-echo "== ${APP_NAME}: BUNDLE_PATH=${BUNDLE_PATH}"
-echo "== ${APP_NAME}: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH}"
-echo "== ${APP_NAME}: YARN_CACHE_FOLDER=${YARN_CACHE_FOLDER}"
+echo "== ${APP_NAME}: BUNDLE_PATH=${BUNDLE_PATH:-/cache/bundle}"
+echo "== ${APP_NAME}: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH:-/cache/rubygems}"
+echo "== ${APP_NAME}: YARN_CACHE_FOLDER=${YARN_CACHE_FOLDER:-/cache/yarn-cache}"
 echo "== ${APP_NAME}: ruby $(ruby -v 2>/dev/null || echo missing)"
 echo "== ${APP_NAME}: yarn $(yarn --version 2>/dev/null || echo unknown)"
 
@@ -49,41 +39,30 @@ else
   fi
 fi
 
-# Yarn is for JS workspaces/tests — not required to boot Rails. Never fail the
-# container solely because the offline mirror is incomplete (host can warm it).
 if [[ -f "${CLUSTER_ROOT}/package.json" ]] && [[ -f "${CLUSTER_ROOT}/yarn.lock" ]]; then
   if [[ ! -d "${CLUSTER_ROOT}/node_modules" ]]; then
-    echo "== ${APP_NAME}: yarn install (prefer classic offline mirror)"
+    echo "== ${APP_NAME}: yarn install"
     (
       cd "${CLUSTER_ROOT}"
-      if ! yarn install --frozen-lockfile --offline; then
-        echo "== ${APP_NAME}: offline mirror incomplete; trying --prefer-offline"
-        if ! yarn install --frozen-lockfile --prefer-offline; then
-          echo "== ${APP_NAME}: fetching remaining packages from network"
-          yarn install --frozen-lockfile || \
-            echo "== ${APP_NAME}: warning: yarn install failed; continuing (Rails does not need node_modules)" >&2
-        fi
-      fi
-    ) || echo "== ${APP_NAME}: warning: yarn install failed; continuing" >&2
+      yarn install --frozen-lockfile --prefer-offline 2>/dev/null || \
+        yarn install --frozen-lockfile || \
+        echo "== ${APP_NAME}: warning: yarn install failed; continuing" >&2
+    ) || true
   else
-    echo "== ${APP_NAME}: node_modules present (host mount); skipping yarn install"
+    echo "== ${APP_NAME}: node_modules present; skipping yarn install"
   fi
 fi
 
-# --- PostgreSQL (required in development) ------------------------------------
-# Compose sets DATABASE_URL per app (see config/apps.yml database:).
-# Fail early if we are not on postgresql after db:prepare.
 redact_url() {
-  # postgresql://user:pass@host:5432/db → postgresql://user:***@host:5432/db
   sed -E 's#(://[^:/@]+:)[^@]+@#\1***@#' <<<"${1:-}"
 }
 
 if [[ -n "${DATABASE_URL:-}" ]]; then
   echo "== ${APP_NAME}: DATABASE_URL=$(redact_url "${DATABASE_URL}")"
 elif [[ -n "${POSTGRES_HOST:-}" ]]; then
-  echo "== ${APP_NAME}: POSTGRES_HOST=${POSTGRES_HOST} POSTGRES_USER=${POSTGRES_USER:-} (no DATABASE_URL)"
+  echo "== ${APP_NAME}: POSTGRES_HOST=${POSTGRES_HOST} POSTGRES_USER=${POSTGRES_USER:-}"
 else
-  echo "== ${APP_NAME}: warning: no DATABASE_URL or POSTGRES_HOST; database.yml host defaults apply" >&2
+  echo "== ${APP_NAME}: warning: no DATABASE_URL or POSTGRES_HOST" >&2
 fi
 
 wait_for_postgres() {
@@ -97,8 +76,6 @@ wait_for_postgres() {
     sleep 2
   done
   echo "error: ${APP_NAME}: could not connect to PostgreSQL" >&2
-  echo "  DATABASE_URL=$(redact_url "${DATABASE_URL:-}")" >&2
-  echo "  POSTGRES_HOST=${POSTGRES_HOST:-} POSTGRES_USER=${POSTGRES_USER:-}" >&2
   return 1
 }
 

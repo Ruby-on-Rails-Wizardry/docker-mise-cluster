@@ -9,26 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Security
+
+## [0.7.0] - 2026-08-03
+
+### Added
+
 - Four-app layout: **fred**, **ron**, **harry**, **george** (submodules + compose + nginx + Postgres DBs)
 - New demo repos [ron](https://github.com/Ruby-on-Rails-Wizardry/ron) and [harry](https://github.com/Ruby-on-Rails-Wizardry/harry)
 - Task shorthands: `up:ron`, `up:harry`, `db:reset:ron`, `db:reset:harry`, app-scoped `task ron -- …` / `task harry -- …`
+- **`bin/warm` / `task warm`**: crawl Gemfile + package.json inside the image; fill shared volume **`cache`**
 
 ### Changed
 
 - App ports start at **3001**: fred 3001, ron 3002, harry 3003, george 3004 (simple path prefixes `/fred` … `/george`)
-- **Compose project name** is no longer forced to `docker-mise-cluster` — Docker uses the directory basename (copy to `wf/` → project `wf`). Export `COMPOSE_PROJECT_NAME` only if you need a stable override.
-- **No run-time user/UID overrides** — compose uses the identity baked into `ubuntu-mise:dev` (build base with host defaults); `.env` no longer writes `IMAGE_USER` / `DEV_UID` / `DEV_GID`
-- Rename **`docker-compose.yml` → `compose.yml`**; `bin/compose` relies on Compose default file discovery (no hard-coded alternate name)
-- **DRY app services:** shared `x-app` anchor (image, volumes, depends_on, command, healthcheck via `PORT`); each app only sets working_dir, ports, and per-app env
-- Drop redundant per-service `hostname` (service name is enough for Docker DNS)
-- `bin/doctor` lists apps from `config/apps.yml` instead of a hard-coded pair
-- Docs: Ubuntu-first four-app template; production Kamal section describes N apps on one VPS
+- **Compose project name** is no longer forced to `docker-mise-cluster` — Docker uses the directory basename
+- **No run-time user/UID overrides** — identity from ubuntu-mise image build only
+- Rename **`docker-compose.yml` → `compose.yml`**; Compose default file discovery
+- **DRY app services** via `x-app` anchor
+- **Single cache model:** Docker volume named **`cache`** → `/cache` (mise, gems, yarn). Drop host `.cache` + `config/cache-layout.env` dual path
+- Getting started: **build → warm → up**
+- Docs: Ubuntu-first four-app template
 
 ### Fixed
 
 ### Security
 
 **Migration:** existing Compose stacks named `docker-mise-cluster` become a new project (`cluster` under the umbrella, or `wf` when cloned that way). Optional cleanup: `docker compose -p docker-mise-cluster down`. New Postgres DBs (ron/harry) need a fresh `pgdata` volume or manual `CREATE DATABASE` if an old volume is reused.
+
 
 ## [0.6.0] - 2026-07-30
 
