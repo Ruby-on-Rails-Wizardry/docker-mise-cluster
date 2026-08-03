@@ -7,16 +7,17 @@ Template for a **multi-app Rails development cluster** on **Ubuntu** (local Dock
 ```bash
 cd ../ubuntu-mise && task build && cd -
 mise install && task doctor
-task warm                 # fill volume `cache` → /cache (crawl Gemfile / package.json)
+bin/compose build nginx   # local cluster-nginx:dev
+task warm                 # fill volume `cache` → /cache
 task up:fred              # or: task up:all
 # http://localhost:8080/fred/   … /ron/ /harry/ /george/
-# direct: :3001 … :3004
 ```
 
 | Step | What |
 |------|------|
-| **build** | `ubuntu-mise:dev` once (host USER/UID at build) |
-| **warm** | Shared Docker volume **`cache`** → `/cache` (mise, gems, yarn) |
+| **build base** | `ubuntu-mise:dev` once (host USER/UID at build) |
+| **build nginx** | `bin/compose build nginx` → `cluster-nginx:dev` |
+| **warm** | Shared Docker volume **`cache`** → `/cache` |
 | **up** | Compose apps + nginx + db + redis |
 
 Always use **`bin/compose`** / **`task`** so the base image and volume exist.
@@ -90,7 +91,7 @@ Short version:
 
 1. Clone/copy as **`wf/`** with real app submodules (not necessarily the demo apps).
 2. Align **`config/apps.yml`**, **`compose.yml`**, **`nginx/`**, and DB setup for each app.
-3. Build **`ubuntu-mise:dev`**, then `task warm` → `task up:…`.
+3. Build **`ubuntu-mise:dev`** and **`bin/compose build nginx`**, then `task warm` → `task up:…`.
 
 ## License
 

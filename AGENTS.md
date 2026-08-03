@@ -57,7 +57,7 @@ App code changes are committed **inside** each app repo, then the parent cluster
 ## Rules
 
 1. **One cache:** volume **`cache`** → `/cache` (image ENV for mise/bundle/yarn). Warm with **`bin/warm`**. Do not reintroduce host `.cache` dual paths.
-2. App list only in **`config/apps.yml`**; `bin/setup` and `bin/apps` read it. Keep **`compose.yml`** services, **`nginx/nginx.conf`**, and **`docker/postgres/init-databases.sql`** in sync (`port`, `url_root`, DB). Shared app shape: `x-app` anchor.
+2. App list only in **`config/apps.yml`**; `bin/setup` and `bin/apps` read it. Keep **`compose.yml`** and **`nginx/`** in sync (`port`, `url_root`, DB). Shared app shape: `x-app`. DBs via Rails `db:prepare` (no SQL init on simpler-experment).
 3. Bundler flags only in **`config/bundler-flags.yml`** (symlinked as `.bundle/config`).
 4. Do **not** set `BUNDLE_APP_CONFIG` to the cluster root when running app Gemfiles.
 5. Prefer `bundle install --local` / yarn `--offline` before network.
@@ -65,7 +65,7 @@ App code changes are committed **inside** each app repo, then the parent cluster
 7. Do not commit `.cache/**` contents.
 8. Do not introduce Yarn Berry in this template.
 9. Nginx is path routing only (**dev**). Do not reintroduce oauth2 here unless explicitly requested. Production uses **hostname** routing via kamal-proxy, not these path prefixes.
-10. Dev Postgres/Redis credentials stay in compose / `.env.example` only — never real secrets. Per-app DBs: `docker/postgres/init-databases.sql`; wire new apps in compose (`DATABASE_URL`, `REDIS_URL`) and that init script.
+10. Dev Postgres/Redis credentials stay in compose / `.env.example` only — never real secrets. Wire apps with compose `DATABASE_URL` / `REDIS_URL`; DBs created by Rails if missing.
 11. **Mise install timing:** development → **runtime** + `/cache`; production → **image build** only (see Decisions table). Do not bake language toolchains into the cluster **dev** image build; do not run `mise install` on production boot.
 12. **Do not** treat this compose stack as production. Deploy each app with **Kamal** from its app repo.
 

@@ -15,7 +15,8 @@ Copy the **orchestration layer** as a unit:
 | `config/apps.yml` | App list (rewrite for your apps) |
 | `config/bundler-flags.yml` | Shared Bundler flags |
 | `nginx/` | Path reverse proxy + home page |
-| `docker/postgres/` | Optional DB init (if you keep init SQL) |
+| `docker/postgres/` | Optional notes only (simpler-experment: Rails creates DBs) |
+| `nginx/Dockerfile` | Local nginx image build |
 | `Taskfile.yml`, `mise.toml`, `.mise.env` | Host tasks + defaults |
 | Root `package.json` / `yarn.lock` | Yarn workspaces (adjust names) |
 | `.gitignore`, `.dockerignore`, `.env.example` | Hygiene |
@@ -40,7 +41,7 @@ For every app:
 1. **`config/apps.yml`** — `name`, `path`, `port`, `url_root`, `database`, `redis_db`
 2. **`compose.yml`** — service deltas under `x-app` (`working_dir`, ports, `RAILS_RELATIVE_URL_ROOT`, `DATABASE_URL`, `REDIS_URL`)
 3. **`nginx/nginx.conf`** (+ links in **`nginx/html/index.html`**)
-4. **DB setup** — either init SQL on first Postgres volume, or Rails `db:prepare` / create-if-missing (see current branch notes)
+4. **DB setup** — Rails `db:prepare` creates DBs if missing (compose superuser); optional SQL init only if you reintroduce it
 
 Also update:
 
@@ -107,7 +108,7 @@ Public defaults use Docker Hub short names for shared services:
 | apps / dev | `ubuntu-mise:dev` (`pull_policy: never`) | Build locally |
 | db | `postgres:N` | Pulls Hub (CloudFront) if missing |
 | redis | `redis:N-alpine` | same |
-| nginx | Hub nginx or local build | same / local |
+| nginx | **`cluster-nginx:dev`** via `nginx/Dockerfile` (`pull_policy: never`) | `bin/compose build nginx` |
 
 Corp environments (see anonymized **`partial/`** under docker-mise) use full registry URLs, e.g.:
 

@@ -7,8 +7,8 @@
 #   harry → git@github.com:Ruby-on-Rails-Wizardry/harry.git
 #   george → git@github.com:Ruby-on-Rails-Wizardry/george.git
 #
-# Keep compose.yml services, nginx/nginx.conf locations, and
-# docker/postgres/init-databases.sql in sync with ports / url_root / database.
+# Keep compose.yml services and nginx/nginx.conf in sync with ports / url_root / database.
+# DBs: Rails db:prepare creates missing databases (no init-databases.sql on simpler-experment).
 
 apps:
   - name: fred

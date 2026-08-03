@@ -1,15 +1,17 @@
-# Multi-app dev cluster: prebuilt ubuntu-mise:dev + nginx + Postgres + Redis.
+# Multi-app dev cluster: prebuilt ubuntu-mise:dev + local nginx + Postgres + Redis.
 #
 # Build base first:  cd ../ubuntu-mise && task build
 # Warm caches:       task warm
+# Build nginx once:  bin/compose build nginx
 # Run:               task up:fred | task up:all
 #
-# Single shared volume `cache` → /cache (mise, gems, yarn — image ENV layout).
-# Compose project name = directory basename. Always use bin/compose.
+# Experiment (simpler-experment):
+#   - No init-databases.sql — Rails db:prepare creates DBs if missing
+#   - No healthchecks on app services (less log spam)
+#   - nginx built from ./nginx/Dockerfile (local image)
 #
-# Per-app services only set deltas (path, port, DB, redis). Shared shape: x-app.
+# Single shared volume `cache` → /cache. Compose project = directory basename.
 
-# Image USER/HOME and BUNDLE_*/YARN_*/MISE_* under /cache are baked into ubuntu-mise.
 x-runtime-env: &runtime-env
   WORKSPACE: /work
   CACHE_ROOT: /cache
@@ -27,6 +29,7 @@ x-db-env: &db-env
 x-service-env: &service-env
   <<: [*runtime-env, *db-env]
 
+# Shared by every Rails app (and optional `dev` shell). No app healthchecks.
 x-app: &app
   image: ${IMAGE:-ubuntu-mise:dev}
   pull_policy: never
@@ -44,14 +47,8 @@ x-app: &app
     redis:
       condition: service_healthy
     nginx:
-      condition: service_healthy
+      condition: service_started
   command: ["bash", "-lc", "exec $$WORKSPACE/bin/docker-app"]
-  healthcheck:
-    interval: 10s
-    timeout: 5s
-    retries: 12
-    start_period: 90s
-    test: ["CMD-SHELL", "curl -fsS \"http://127.0.0.1:$${PORT}/up\" >/dev/null"]
 
 services:
   db:
@@ -59,10 +56,10 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-cluster}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cluster}
+      # Superuser default DB only — per-app DBs via Rails db:create / db:prepare
       POSTGRES_DB: postgres
     volumes:
       - pgdata:/var/lib/postgresql
-      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
     ports:
       - "${POSTGRES_PUBLISH_PORT:-5432}:5432"
     healthcheck:
@@ -84,19 +81,19 @@ services:
       test: ["CMD", "redis-cli", "ping"]
 
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    image: ${NGINX_IMAGE:-cluster-nginx:dev}
+    pull_policy: never
     ports:
       - "8080:8080"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/proxy.conf:/etc/nginx/proxy.conf:ro
-      - ./nginx/html:/usr/share/nginx/html:ro
-    healthcheck:
-      interval: 5s
-      timeout: 3s
-      retries: 6
-      start_period: 5s
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+    # Config baked into image (rebuild after nginx/ edits).
+    # Optional live bind mounts for local hacking:
+    #   volumes:
+    #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    #     - ./nginx/proxy.conf:/etc/nginx/proxy.conf:ro
+    #     - ./nginx/html:/usr/share/nginx/html:ro
 
   dev:
     <<: *app
@@ -107,8 +104,6 @@ services:
       redis:
         condition: service_healthy
     command: ["bash", "-lc", "mise install && exec bash"]
-    healthcheck:
-      disable: true
 
   # --- Apps (deltas only; keep in sync with config/apps.yml) -----------------
 
@@ -162,7 +157,6 @@ services:
 
 volumes:
   pgdata:
-  # Shared tool/package cache (mise, gems, yarn). Created by bin/warm / bin/cache-ensure.
   cache:
     name: cache
     external: true

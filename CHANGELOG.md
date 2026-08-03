@@ -9,10 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `docs/ADOPT.md` — how to use this template in a real project
+- `nginx/Dockerfile` — local **`cluster-nginx:dev`** (config baked in)
+
 ### Changed
 
-- Drop remaining `COMPOSE_PROJECT_NAME` / `COMPOSE_PROJECT_EFFECTIVE` surface (docs, doctor, .env)
-
+- **simpler-experment:** drop `init-databases.sql` — Rails `db:prepare` creates missing DBs
+- **simpler-experment:** no healthchecks on app services (less log spam); nginx via `service_started`
+- nginx local image (`pull_policy: never`) instead of Hub + bind-mount only
 
 ### Fixed
 
