@@ -82,11 +82,15 @@ bin/compose --profile dev run --rm dev
 Front door: **http://localhost:8080/**  
 Postgres **5432** / Redis **6379** (dev credentials in `.env.example`).
 
-## Adopting
+## Adopting into a real project
 
-1. Clone/copy as **`wf/`** with submodules.
-2. Edit `config/apps.yml`, `compose.yml` app deltas, `nginx/nginx.conf`, `docker/postgres/init-databases.sql` together.
-3. `task warm` then `task up:…`.
+Full guide: **[docs/ADOPT.md](docs/ADOPT.md)** (what to copy, what to rewrite, Nexus/images, bring-up).
+
+Short version:
+
+1. Clone/copy as **`wf/`** with real app submodules (not necessarily the demo apps).
+2. Align **`config/apps.yml`**, **`compose.yml`**, **`nginx/`**, and DB setup for each app.
+3. Build **`ubuntu-mise:dev`**, then `task warm` → `task up:…`.
 
 ## License
 
