@@ -49,8 +49,8 @@ if [[ -z "${SHELL:-}" ]]; then
 fi
 export DEV_UID="${DEV_UID:-$(id -u)}"
 export DEV_GID="${DEV_GID:-$(id -g)}"
-# Match host login by default (same as ubuntu-mise / ubuntu-sample).
-# Override in .mise.env.local only if the base image was built for another user.
+# Host identity is for building ubuntu-mise only (see bin/build there).
+# Runtime compose does not override USER/UID — image defaults apply.
 export IMAGE_USER="${IMAGE_USER:-${USER}}"
 PROJECT="${PROJECT:-${ROOT}}"
 CACHE_ROOT="${CACHE_ROOT:-/cache}"
@@ -99,6 +99,7 @@ ensure_image() {
     log "image ${IMAGE} missing — building via ${sibling}"
     (
       cd "${sibling}"
+      # Build with host identity so bind mounts match; run-time needs no overrides.
       export IMAGE
       export POSTGRESQL_VERSION
       export DEV_UID DEV_GID

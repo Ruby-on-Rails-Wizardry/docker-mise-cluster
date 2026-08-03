@@ -14,7 +14,7 @@ Includes:
 - Layout: project **`/work`**, tools at runtime into shared **`/cache`** volume (`ubuntu-mise-cache`)
 - **Mise:** development installs at **runtime** into `/cache`; production app images install at **build** only
 - **Compose project name** = directory basename (copy to `wf/` and project is `wf` — no hard-coded name)
-- **Container user** defaults to host `$USER` / `id -u` (match the ubuntu-mise build; no run-time flags)
+- **Container user** comes from the **ubuntu-mise image build** (host `$USER` / UID at `task build`); compose does not override user at run time
 
 Clone with apps:
 
@@ -96,7 +96,7 @@ All four apps run the **prebuilt** **`ubuntu-mise:dev`** image (`pull_policy: ne
 
 Shared `/cache` volume: **`ubuntu-mise-cache`** (same default as ubuntu-mise / ubuntu-sample). PostgreSQL major for compose `db` and base client parity: **`.mise.env`** → `POSTGRESQL_VERSION=18`.
 
-**User identity:** `bin/compose` writes host `$USER` / `id -u` / `id -g` into `.env`. Build the base the same way (ubuntu-mise defaults). Override only in `.mise.env.local` if you deliberately use a shared `dev:1000` image.
+**User identity:** build ubuntu-mise with host defaults (`cd ../ubuntu-mise && task build`). Cluster compose does **not** set `user` / `USER` / `HOME` at run time — the image already has the right login.
 
 **Compose project name:** omit `COMPOSE_PROJECT_NAME` so Docker uses the directory name. Copy/clone this tree as `wf/` and the project is `wf`.
 

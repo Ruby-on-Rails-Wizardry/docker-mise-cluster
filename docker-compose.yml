@@ -27,11 +27,9 @@ x-cache-env: &cache-env
   BUNDLE_CACHE_PATH: /work/${CACHE_RUBYGEMS:-.cache/rubygems}
   YARN_CACHE_FOLDER: /work/${CACHE_YARN_FOLDER:-.cache/yarn-cache}
 
-# Container login must match the user baked into ubuntu-mise:dev (host $USER by default).
+# Do not set USER/HOME here — use the identity baked into ubuntu-mise:dev at build.
 # Dev: mise install at runtime into /cache (volume). Prod apps: install at image build only.
 x-runtime-env: &runtime-env
-  HOME: /home/${IMAGE_USER:-dev}
-  USER: ${IMAGE_USER:-dev}
   WORKSPACE: /work
   CACHE_ROOT: /cache
   MISE_DATA_DIR: /cache/mise
@@ -74,7 +72,7 @@ x-app-depends: &app-depends
 x-app-base: &app-base
   image: ${IMAGE:-ubuntu-mise:dev}
   pull_policy: never
-  user: ${IMAGE_USER:-dev}
+  # No `user:` override — image Dockerfile USER from build.
   working_dir: /work
   environment:
     <<: *service-env

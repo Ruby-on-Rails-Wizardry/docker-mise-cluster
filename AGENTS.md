@@ -20,7 +20,7 @@ Reference trees (do not treat as the product):
 | App layout | **Git submodules** (`fred`, `ron`, `harry`, `george` → independent repos) |
 | App ports / paths | Simple name paths; ports from **3001**: fred `/fred:3001`, ron `/ron:3002`, harry `/harry:3003`, george `/george:3004` |
 | **Compose project name** | **Directory basename** — do **not** hardcode `COMPOSE_PROJECT_NAME` (copy to `wf/` → project `wf`) |
-| **Container user** | Host `$USER` + `DEV_UID`/`DEV_GID` by default (match ubuntu-mise build); no run-time flags |
+| **Container user** | Baked into **ubuntu-mise** at **build** (host `$USER`/`DEV_UID`/`DEV_GID` via `task build`); compose does **not** pass user/UID at run time |
 | **Production deploy** | **N Kamal apps, one VPS** (Approach A): each app has its own image + `config/deploy.yml`; **kamal-proxy** routes by **hostname**. Not `docker compose` of this cluster in prod. |
 | Host UX | Cluster + each app: **mise** + **Task** like ubuntu-sample (`.mise.env` with `POSTGRESQL_VERSION`, `bin/*`, mirrored tasks). Cluster orchestrates multi-app + **nginx** path routing. |
 | Yarn | **Classic 1.22.x** (not Berry) |
@@ -60,7 +60,7 @@ App code changes are committed **inside** each app repo, then the parent cluster
 3. Bundler flags only in **`config/bundler-flags.yml`** (symlinked as `.bundle/config`).
 4. Do **not** set `BUNDLE_APP_CONFIG` to the cluster root when running app Gemfiles.
 5. Prefer `bundle install --local` / yarn `--offline` before network.
-6. Image user defaults to **host `$USER`** (`IMAGE_USER`); project mount / WORKDIR is **`/work`** (`WORKSPACE`, same as ubuntu-mise). Build base with the same defaults so bind mounts work without run-time flags.
+6. Image user is set at **ubuntu-mise build** only (host `$USER` / UID / GID). Project mount / WORKDIR is **`/work`** (`WORKSPACE`). Do **not** pass `user:` / `IMAGE_USER` / `DEV_UID` at cluster run time.
 7. Do **not** set a default `COMPOSE_PROJECT_NAME` — Docker uses the directory name. Operators may export one only when they need a stable name across renames.
 8. Do not commit `.cache/**` contents (only `.gitkeep`).
 9. Do not introduce Yarn Berry in this template.

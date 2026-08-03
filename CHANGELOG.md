@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - App ports start at **3001**: fred 3001, ron 3002, harry 3003, george 3004 (simple path prefixes `/fred` … `/george`)
 - **Compose project name** is no longer forced to `docker-mise-cluster` — Docker uses the directory basename (copy to `wf/` → project `wf`). Export `COMPOSE_PROJECT_NAME` only if you need a stable override.
-- **Container user** defaults to host `$USER` / `id -u` / `id -g` (aligned with ubuntu-mise), not hard-coded `dev` — rebuild base with host defaults; no run-time identity flags required
+- **No run-time user/UID overrides** — compose uses the identity baked into `ubuntu-mise:dev` (build base with host defaults); `.env` no longer writes `IMAGE_USER` / `DEV_UID` / `DEV_GID`
 - `bin/doctor` lists apps from `config/apps.yml` instead of a hard-coded pair
 - Docs: Ubuntu-first four-app template; production Kamal section describes N apps on one VPS
 
