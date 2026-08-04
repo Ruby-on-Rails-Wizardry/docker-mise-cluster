@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `bin/warm`: skip `bundle cache --all-platforms` when already satisfied
+  (`WARM_FORCE_CACHE=1` to always refresh `/cache/rubygems`)
+
 ### Fixed
 
 ### Security

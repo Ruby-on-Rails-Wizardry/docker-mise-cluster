@@ -9,11 +9,13 @@
 #   - If Gemfile_next.lock exists, every install dual-resolves the "next" lock.
 #   - Warm defaults: skip next-lock sync; auto-isolate BUNDLE_PATH when bootboot
 #     is detected. Override: WARM_SKIP_NEXT_LOCK=0 / WARM_ISOLATE_BUNDLE=0|1.
+#   - bundle cache --all-platforms only after a real install (or WARM_FORCE_CACHE=1).
 #
 # Usage:
 #   bin/warm
 #   task warm
 #   WARM_ISOLATE_BUNDLE=1 bin/warm
+#   WARM_FORCE_CACHE=1 bin/warm   # refresh /cache/rubygems even when satisfied
 #
 # Prerequisites: image ubuntu-mise:dev (bin/compose ensures it).
 set -euo pipefail
@@ -64,6 +66,8 @@ export PATH="/docker/bin:${HOME}/.local/bin:${MISE_DATA_DIR}/shims:${PATH}"
 WARM_ISOLATE_BUNDLE="${WARM_ISOLATE_BUNDLE:-0}"
 # WARM_SKIP_NEXT_LOCK=1 → move Gemfile_next.lock aside during install (bootboot)
 WARM_SKIP_NEXT_LOCK="${WARM_SKIP_NEXT_LOCK:-1}"
+# WARM_FORCE_CACHE=1 → always bundle cache --all-platforms (even if already satisfied)
+WARM_FORCE_CACHE="${WARM_FORCE_CACHE:-0}"
 
 cd /work
 echo "== warm: CACHE_ROOT=${CACHE_ROOT}"
@@ -73,6 +77,7 @@ echo "== warm: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH}"
 echo "== warm: YARN_OFFLINE_MIRROR=${YARN_OFFLINE_MIRROR}"
 echo "== warm: WARM_ISOLATE_BUNDLE=${WARM_ISOLATE_BUNDLE}"
 echo "== warm: WARM_SKIP_NEXT_LOCK=${WARM_SKIP_NEXT_LOCK}"
+echo "== warm: WARM_FORCE_CACHE=${WARM_FORCE_CACHE}"
 
 if command -v mise >/dev/null 2>&1; then
   mise trust /work 2>/dev/null || true
@@ -131,29 +136,35 @@ bundle_one() {
       echo "   aside Gemfile_next.lock (skip bootboot dual-lock sync)"
     fi
 
-    run_install() {
-      if bundle check >/dev/null 2>&1; then
-        echo "   already satisfied (BUNDLE_PATH=${BUNDLE_PATH})"
-        return 0
-      fi
-      echo "   bundle install (BUNDLE_PATH=${BUNDLE_PATH})"
-      if bundle install --local 2>/dev/null; then
-        return 0
-      fi
-      bundle install
-    }
+    # 0 = already satisfied (skip cache unless WARM_FORCE_CACHE)
+    # 1 = installed this run (refresh rubygems cache)
+    did_install=0
 
-    if ! run_install; then
-      # Half-installed local plugin (CommandConflict on bootboot) is common.
-      if [[ -d .bundle/plugin ]]; then
-        echo "   clearing ${rel}/.bundle/plugin and retrying" >&2
-        rm -rf .bundle/plugin
+    if bundle check >/dev/null 2>&1; then
+      echo "   already satisfied (BUNDLE_PATH=${BUNDLE_PATH})"
+    else
+      echo "   bundle install (BUNDLE_PATH=${BUNDLE_PATH})"
+      if ! bundle install --local 2>/dev/null; then
+        if ! bundle install; then
+          # Half-installed local plugin (CommandConflict on bootboot) is common.
+          if [[ -d .bundle/plugin ]]; then
+            echo "   clearing ${rel}/.bundle/plugin and retrying" >&2
+            rm -rf .bundle/plugin
+          fi
+          sleep 1
+          bundle install
+        fi
       fi
-      sleep 1
-      run_install
+      did_install=1
     fi
 
-    bundle cache --all-platforms 2>/dev/null || true
+    if [[ "${did_install}" -eq 1 || "${WARM_FORCE_CACHE}" == "1" ]]; then
+      echo "   bundle cache --all-platforms → ${BUNDLE_CACHE_PATH}"
+      bundle cache --all-platforms 2>/dev/null || true
+    else
+      echo "   skip bundle cache (already satisfied; WARM_FORCE_CACHE=1 to refresh)"
+    fi
+
     restore_next_lock
     trap - EXIT
   )
@@ -226,6 +237,7 @@ docker run --rm \
   -e "BUNDLE_CLEAN=false" \
   -e "WARM_ISOLATE_BUNDLE=${WARM_ISOLATE_BUNDLE:-0}" \
   -e "WARM_SKIP_NEXT_LOCK=${WARM_SKIP_NEXT_LOCK:-1}" \
+  -e "WARM_FORCE_CACHE=${WARM_FORCE_CACHE:-0}" \
   -e "TZ=${tz}" \
   -e "TERM=${TERM:-xterm-256color}" \
   -w /work \
