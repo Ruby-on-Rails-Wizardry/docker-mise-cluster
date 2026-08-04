@@ -1,59 +1,6 @@
 #!/usr/bin/env bash
-# Ensure each Gemfile project has its own .bundle/config (not a shared symlink).
-#
-# Seed from config/bundler-flags.yml when missing. Leave existing configs alone
-# so bootboot / local path settings can diverge per app. Paths stay in ENV
-# (BUNDLE_PATH, BUNDLE_CACHE_PATH, BUNDLE_USER_HOME on /cache).
-#
-# Usage:
-#   bin/ensure-bundle-config           # all apps (+ root if Gemfile)
-#   bin/ensure-bundle-config app1 app2  # named app paths only
+# Managed by cluster-tasks wire — do not edit by hand
 set -euo pipefail
-# shellcheck source=lib.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
-
-FLAGS="${ROOT}/config/bundler-flags.yml"
-[[ -f "${FLAGS}" ]] || die "missing ${FLAGS}"
-
-seed_one() {
-  local dir=$1
-  local rel cfg
-  rel="${dir#"${ROOT}"/}"
-  [[ "${dir}" == "${ROOT}" ]] && rel="."
-  cfg="${dir}/.bundle/config"
-
-  mkdir -p "${dir}/.bundle"
-
-  if [[ -L "${cfg}" ]]; then
-    log "replace shared symlink ${rel}/.bundle/config with a private copy"
-    rm -f "${cfg}"
-  fi
-
-  if [[ -f "${cfg}" ]]; then
-    return 0
-  fi
-
-  cp "${FLAGS}" "${cfg}"
-  log "seeded ${rel}/.bundle/config from config/bundler-flags.yml"
-}
-
-if [[ $# -gt 0 ]]; then
-  for name in "$@"; do
-    if [[ -d "${ROOT}/${name}" ]]; then
-      seed_one "${ROOT}/${name}"
-    elif [[ -d "${name}" ]]; then
-      seed_one "$(cd "${name}" && pwd)"
-    else
-      die "unknown app path: ${name}"
-    fi
-  done
-else
-  if [[ -f "${ROOT}/Gemfile" ]]; then
-    seed_one "${ROOT}"
-  fi
-  while IFS= read -r app_path; do
-    [[ -z "${app_path}" ]] && continue
-    [[ -f "${ROOT}/${app_path}/Gemfile" ]] || continue
-    seed_one "${ROOT}/${app_path}"
-  done < <("${ROOT}/bin/apps" paths)
-fi
+export CLUSTER_ROOT="/home/rob/Ruby-on-Rails-Wizardry/docker-mise-cluster"
+export CLUSTER_TASKS_ROOT="/home/rob/Ruby-on-Rails-Wizardry/cluster-tasks"
+exec "${CLUSTER_TASKS_ROOT}/bin/ensure-bundle-config" "$@"

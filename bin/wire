@@ -3,4 +3,4 @@
 set -euo pipefail
 export CLUSTER_ROOT="/home/rob/Ruby-on-Rails-Wizardry/docker-mise-cluster"
 export CLUSTER_TASKS_ROOT="/home/rob/Ruby-on-Rails-Wizardry/cluster-tasks"
-exec "${CLUSTER_TASKS_ROOT}/bin/cache-env" "$@"
+exec "${CLUSTER_TASKS_ROOT}/bin/wire" "$@"

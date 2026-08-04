@@ -56,7 +56,18 @@ Path prefixes often **differ** from directory names in real systems (e.g. `/acti
 
 Full write-up: **[docs/SHARED-GEMS.md](SHARED-GEMS.md)** (pattern, day-to-day, add a gem, troubleshooting).
 
-Reusable host Task/bin tooling (future extract): **[cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** — clone as a **sibling** of this tree (not a nested submodule). See that repo’s `docs/PLAN.md` / `docs/TODO.md`.
+Reusable host Task/bin tooling: **[cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** as a **sibling** clone (not nested).
+
+```bash
+# parent/
+#   cluster-tasks/
+#   docker-mise-cluster/   # this tree
+cd ../docker-mise-cluster
+../cluster-tasks/bin/wire --yes
+task doctor
+```
+
+`wire` is idempotent: host wrappers + in-container `bin/docker-app` copies, Task include, `BUNDLE_CLEAN=false`. See cluster-tasks `docs/PLAN.md` / `docs/TODO.md`.
 
 Short version: Gemfile pins the **published** form; cluster dev uses
 `bin/local-gem-env` → `BUNDLE_LOCAL__*` path override. Do not use bootboot for this.

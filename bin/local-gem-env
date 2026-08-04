@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Managed by cluster-tasks wire — do not edit by hand (materialized for in-container /work/bin)
 # Emit `export BUNDLE_LOCAL__GEM=path` for shared_gems in config/apps.yml.
 #
 # This is the clean path-vs-published pattern (no bootboot):
@@ -11,7 +12,15 @@
 #   bin/local-gem-env --print           # show without export keyword
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -n "${CLUSTER_ROOT:-}" && -f "${CLUSTER_ROOT}/config/apps.yml" ]]; then
+  ROOT="$(cd "${CLUSTER_ROOT}" && pwd)"
+elif [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config/apps.yml" ]]; then
+  ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+elif [[ -f "${PWD}/config/apps.yml" ]]; then
+  ROOT="${PWD}"
+else
+  ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
 APPS_YML="${ROOT}/config/apps.yml"
 PRINT_ONLY=0
 BASE=""

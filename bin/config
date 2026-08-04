@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
+# Managed by cluster-tasks wire — do not edit by hand
 set -euo pipefail
-# shellcheck source=lib.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
-print_config
+export CLUSTER_ROOT="/home/rob/Ruby-on-Rails-Wizardry/docker-mise-cluster"
+export CLUSTER_TASKS_ROOT="/home/rob/Ruby-on-Rails-Wizardry/cluster-tasks"
+exec "${CLUSTER_TASKS_ROOT}/bin/config" "$@"

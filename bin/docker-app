@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Managed by cluster-tasks wire — do not edit by hand (materialized for in-container /work/bin)
 # Start a Rails app inside the Ubuntu+mise dev container.
 # Prefer a prior `bin/warm` so gems/yarn/mise are already on the cache volume.
 
