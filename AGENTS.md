@@ -58,8 +58,8 @@ App code changes are committed **inside** each app repo, then the parent cluster
 
 1. **One cache:** volume **`cache`** → `/cache` (image ENV for mise/bundle/yarn). Warm with **`bin/warm`**. Do not reintroduce host `.cache` dual paths.
 2. App list only in **`config/apps.yml`**; `bin/setup` and `bin/apps` read it. Keep **`compose.yml`** and **`nginx/`** in sync (`port`, `url_root`, DB). Shared app shape: `x-app`. DBs via Rails `db:prepare`.
-3. Bundler defaults in **`config/bundler-flags.yml`**; each app gets a **private** `<app>/.bundle/config` (seed via `bin/ensure-bundle-config`). Do **not** share one `.bundle` across apps (bootboot writes local config).
-4. Do **not** set `BUNDLE_APP_CONFIG` to the cluster root when running app Gemfiles. Paths come from ENV (`BUNDLE_PATH` / cache volume), not a shared app config.
+3. Bundler defaults in **`config/bundler-flags.yml`**; each app gets a **private** `<app>/.bundle/` (config + local plugins). Seed config via `bin/ensure-bundle-config`. Do **not** share one `.bundle` across apps — with `BUNDLE_PATH` set, bootboot installs under `<app>/.bundle/plugin`.
+4. Do **not** set `BUNDLE_APP_CONFIG` to the cluster root when running app Gemfiles. Install paths come from ENV (`BUNDLE_PATH` / `/cache`). Warm: skip `Gemfile_next.lock` dual-sync by default; auto-isolate `BUNDLE_PATH` per app when bootboot is detected (`WARM_ISOLATE_BUNDLE`, `WARM_SKIP_NEXT_LOCK`).
 5. Prefer `bundle install --local` / yarn `--offline` before network.
 6. Image user is set at **ubuntu-mise build** only (host `$USER` / UID / GID). Project mount / WORKDIR is **`/work`**. Cache/mise/bundle/yarn paths come from **ubuntu-mise image ENV** — do not re-declare them in cluster compose. Do **not** pass `user:` / `IMAGE_USER` / `DEV_UID` at cluster run time.
 7. Do not commit `.cache/**` contents.

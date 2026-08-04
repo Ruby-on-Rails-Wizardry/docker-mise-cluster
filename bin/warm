@@ -4,9 +4,16 @@
 # Runs inside ubuntu-mise:dev so Mac and WSL get the same installs.
 # Crawls /work for Gemfile and package.json (skips node_modules, vendor, .git).
 #
+# Bootboot notes (Shopify dual-boot plugin):
+#   - With BUNDLE_PATH set, plugins install under <app>/.bundle/plugin (per app).
+#   - If Gemfile_next.lock exists, every install dual-resolves the "next" lock.
+#   - Warm defaults: skip next-lock sync; auto-isolate BUNDLE_PATH when bootboot
+#     is detected. Override: WARM_SKIP_NEXT_LOCK=0 / WARM_ISOLATE_BUNDLE=0|1.
+#
 # Usage:
 #   bin/warm
 #   task warm
+#   WARM_ISOLATE_BUNDLE=1 bin/warm
 #
 # Prerequisites: image ubuntu-mise:dev (bin/compose ensures it).
 set -euo pipefail
@@ -19,6 +26,21 @@ ensure_cache_volume
 # Each app owns .bundle/config (bootboot writes here). Seed defaults if missing.
 "${ROOT}/bin/ensure-bundle-config"
 
+# Auto-isolate installed gems when any app declares plugin bootboot (unless set).
+if [[ -z "${WARM_ISOLATE_BUNDLE+x}" ]]; then
+  if grep -R -E "plugin[[:space:]]+['\"]bootboot['\"]" \
+      --include='Gemfile' -l "${ROOT}" 2>/dev/null \
+      | grep -vE '/(\.git|node_modules|vendor)/' \
+      | head -1 | grep -q .; then
+    WARM_ISOLATE_BUNDLE=1
+    log "bootboot detected in a Gemfile → WARM_ISOLATE_BUNDLE=1 (set to 0 to share /cache/bundle)"
+  else
+    WARM_ISOLATE_BUNDLE=0
+  fi
+fi
+export WARM_ISOLATE_BUNDLE
+export WARM_SKIP_NEXT_LOCK="${WARM_SKIP_NEXT_LOCK:-1}"
+
 log "warming volume ${CACHE_VOLUME} → /cache (project ${ROOT})"
 
 # Inline script runs as the container command after entrypoint prepares /cache.
@@ -30,16 +52,18 @@ export MISE_DATA_DIR="${MISE_DATA_DIR:-/cache/mise}"
 export MISE_CACHE_DIR="${MISE_CACHE_DIR:-/cache/mise-cache}"
 export BUNDLE_PATH="${BUNDLE_PATH:-/cache/bundle}"
 export BUNDLE_CACHE_PATH="${BUNDLE_CACHE_PATH:-/cache/rubygems}"
-# Plugins (e.g. bootboot) + user config on the volume — not ephemeral ~/.bundle.
-# Shared across apps so plugin "bootboot" is installed once, not per Gemfile.
+# Compact-index / user cache on the volume. App plugins still live under
+# <app>/.bundle/plugin when BUNDLE_PATH is set (Bundler local-plugin mode).
 export BUNDLE_USER_HOME="${BUNDLE_USER_HOME:-/cache/bundler}"
-# Never prune gems missing from the *current* Gemfile (multi-app share BUNDLE_PATH).
+# Never prune gems missing from the *current* Gemfile when sharing BUNDLE_PATH.
 export BUNDLE_CLEAN="${BUNDLE_CLEAN:-false}"
 export YARN_CACHE_FOLDER="${YARN_CACHE_FOLDER:-/cache/yarn-cache}"
 export YARN_OFFLINE_MIRROR="${YARN_OFFLINE_MIRROR:-/cache/yarn}"
 export PATH="/docker/bin:${HOME}/.local/bin:${MISE_DATA_DIR}/shims:${PATH}"
-# WARM_ISOLATE_BUNDLE=1 → BUNDLE_PATH=/cache/bundle/<app> (still share rubygems cache + plugins)
+# WARM_ISOLATE_BUNDLE=1 → BUNDLE_PATH=/cache/bundle/<app> (share rubygems + user home)
 WARM_ISOLATE_BUNDLE="${WARM_ISOLATE_BUNDLE:-0}"
+# WARM_SKIP_NEXT_LOCK=1 → move Gemfile_next.lock aside during install (bootboot)
+WARM_SKIP_NEXT_LOCK="${WARM_SKIP_NEXT_LOCK:-1}"
 
 cd /work
 echo "== warm: CACHE_ROOT=${CACHE_ROOT}"
@@ -48,6 +72,7 @@ echo "== warm: BUNDLE_USER_HOME=${BUNDLE_USER_HOME}"
 echo "== warm: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH}"
 echo "== warm: YARN_OFFLINE_MIRROR=${YARN_OFFLINE_MIRROR}"
 echo "== warm: WARM_ISOLATE_BUNDLE=${WARM_ISOLATE_BUNDLE}"
+echo "== warm: WARM_SKIP_NEXT_LOCK=${WARM_SKIP_NEXT_LOCK}"
 
 if command -v mise >/dev/null 2>&1; then
   mise trust /work 2>/dev/null || true
@@ -88,21 +113,49 @@ bundle_one() {
   (
     cd "${dir}"
     export BUNDLE_PATH="${path_here}"
-    # Prefer satisfied lock; then offline local cache; then network. Retry once
-    # (plugin install races / flaky gem sources are common with bootboot × N apps).
-    if bundle check >/dev/null 2>&1; then
-      echo "   already satisfied (BUNDLE_PATH=${BUNDLE_PATH})"
-    else
-      echo "   bundle install (BUNDLE_PATH=${BUNDLE_PATH})"
-      if ! bundle install --local 2>/dev/null; then
-        bundle install || {
-          echo "   retry: bundle install (${rel})" >&2
-          sleep 1
-          bundle install
-        }
+
+    # bootboot: after-install-all dual-resolves Gemfile_next.lock when present.
+    # Warm only needs the *current* lock installed; restore next lock afterward.
+    next_aside=""
+    restore_next_lock() {
+      if [[ -n "${next_aside}" && -f "${next_aside}" ]]; then
+        mv -f "${next_aside}" Gemfile_next.lock
+        next_aside=""
       fi
+    }
+    trap restore_next_lock EXIT
+
+    if [[ "${WARM_SKIP_NEXT_LOCK}" == "1" && -f Gemfile_next.lock ]]; then
+      next_aside="Gemfile_next.lock.warm-aside.$$"
+      mv Gemfile_next.lock "${next_aside}"
+      echo "   aside Gemfile_next.lock (skip bootboot dual-lock sync)"
     fi
+
+    run_install() {
+      if bundle check >/dev/null 2>&1; then
+        echo "   already satisfied (BUNDLE_PATH=${BUNDLE_PATH})"
+        return 0
+      fi
+      echo "   bundle install (BUNDLE_PATH=${BUNDLE_PATH})"
+      if bundle install --local 2>/dev/null; then
+        return 0
+      fi
+      bundle install
+    }
+
+    if ! run_install; then
+      # Half-installed local plugin (CommandConflict on bootboot) is common.
+      if [[ -d .bundle/plugin ]]; then
+        echo "   clearing ${rel}/.bundle/plugin and retrying" >&2
+        rm -rf .bundle/plugin
+      fi
+      sleep 1
+      run_install
+    fi
+
     bundle cache --all-platforms 2>/dev/null || true
+    restore_next_lock
+    trap - EXIT
   )
 }
 
@@ -172,6 +225,7 @@ docker run --rm \
   -e "BUNDLE_USER_HOME=/cache/bundler" \
   -e "BUNDLE_CLEAN=false" \
   -e "WARM_ISOLATE_BUNDLE=${WARM_ISOLATE_BUNDLE:-0}" \
+  -e "WARM_SKIP_NEXT_LOCK=${WARM_SKIP_NEXT_LOCK:-1}" \
   -e "TZ=${tz}" \
   -e "TERM=${TERM:-xterm-256color}" \
   -w /work \

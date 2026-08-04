@@ -15,6 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [0.8.2] - 2026-08-04
+
+### Changed
+
+- `bin/warm` bootboot hardening: skip `Gemfile_next.lock` dual-resolve by default
+  (`WARM_SKIP_NEXT_LOCK=1`); auto `WARM_ISOLATE_BUNDLE=1` when a Gemfile declares
+  `plugin "bootboot"`; on failure clear local `.bundle/plugin` and retry
+
+### Fixed
+
+### Security
+
 ## [0.8.1] - 2026-08-04
 
 ### Added
