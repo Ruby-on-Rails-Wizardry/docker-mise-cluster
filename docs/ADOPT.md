@@ -71,30 +71,30 @@ cd ../ubuntu-mise   # or UBUNTU_MISE_ROOT=…
 task build          # host USER/UID baked in — no run-time user knobs
 ```
 
-Host UX on the base image (separate commands, no setup flags):
+Host UX on the base image (from the **ubuntu-mise** tree):
 
 ```bash
 task config         # optional — show deduced values
 task build          # → ubuntu-mise:dev
-task warm           # this tree
-task warm:sample    # optional: sibling Rails sample
 ```
 
 ## Cluster bring-up
 
 ```bash
-cd work               # this tree
+cd work               # this tree (or docker-mise-cluster/)
 mise install          # Task, etc. on host if you use Task
-task warm             # fill Docker volume `cache` → /cache (crawl Gemfile / package.json)
-task up:all           # or task up:fred / bin/compose up …
-# http://localhost:8080/…
+bin/compose build nginx
+task warm             # fill Docker volume `cache` → /cache (apps from config/apps.yml)
+task up:all           # or task up:fred for a single app
+# http://localhost:8080/   (/fred/ /ron/ /harry/ /george/)
 ```
 
 | Step | What |
 |------|------|
 | **build** (once) | `ubuntu-mise:dev` for this host |
-| **warm** | Shared volume **`cache`** (mise, gems, yarn) |
-| **up** | Compose apps + nginx + db + redis |
+| **nginx** | `bin/compose build nginx` → `cluster-nginx:dev` |
+| **warm** | Shared volume **`cache`** (mise, gems, yarn; `BUNDLE_LOCAL__*` for shared gems) |
+| **up** | Compose apps + nginx + db + redis (`task up:all`) |
 
 Always use **`bin/compose`** / **`task`** so the image and volume exist. Compose project name = **directory basename** (no `COMPOSE_PROJECT_NAME` required).
 
@@ -105,7 +105,7 @@ Always use **`bin/compose`** / **`task`** so the image and volume exist. Compose
 | Volume | Named **`cache`** (external; created by `bin/warm` / `bin/cache-ensure`) |
 | Mount | `/cache` inside containers |
 | Layout | Image ENV: mise, `bundle`, rubygems, yarn under `/cache` |
-| Fill | **`task warm`** — container crawl of project-root `Gemfile` / `package.json` (maxdepth 2) |
+| Fill | **`task warm`** — root Gemfile (if any) + each app in `config/apps.yml` (not shared-gem Gemfiles) |
 
 No dual host `.cache` tree for containers. Do not reintroduce host gem paths as the SSOT.
 
@@ -161,5 +161,5 @@ Production remains **per-app Kamal** (hostname routing), not this compose file �
 - [ ] `apps.yml` + `compose.yml` + nginx + DB setup aligned  
 - [ ] `ubuntu-mise:dev` built on this host  
 - [ ] db/redis/nginx images available (Hub, Nexus, or local)  
-- [ ] `task warm` then `task up:…`  
+- [ ] `task warm` then `task up:all`  
 - [ ] Site-local Nexus/proxy on `local` branch if needed  

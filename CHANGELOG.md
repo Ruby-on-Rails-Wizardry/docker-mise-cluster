@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Security
+
+## [0.9.0] - 2026-08-04
+
+### Added
+
 - Shared library gem **[wizardry_shared](https://github.com/Ruby-on-Rails-Wizardry/wizardry_shared)**
   (submodule + `shared_gems` in `config/apps.yml`); all four apps pin `0.1.0`
 - `bin/local-gem-env` — emit `BUNDLE_LOCAL__*` for path checkouts (path-vs-published
@@ -18,9 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Prefer **`work/`** as the example clone/directory name (Compose project basename); drop `wf` naming in docs and root `package.json`
+- Default post-warm / setup next step: **`task up:all`** (single-app `up:fred` still available)
 - `bin/warm`: skip `bundle cache --all-platforms` when already satisfied
   (`WARM_FORCE_CACHE=1` to always refresh `/cache/rubygems`)
 - `bin/warm` bundles root + `config/apps.yml` apps only (not shared-gem Gemfiles)
+- Docs assume standalone **docker-mise-cluster** (not nested under docker-mise)
 
 ### Fixed
 
@@ -201,7 +213,8 @@ First tagged release of the multi-app Docker + mise cluster template.
 - Docker image build: copy root `Gemfile` so `mise install` installs Ruby (not only Node/Yarn)
 - Untrusted `fred/mise.toml` / `george/mise.toml` under the host bind mount
 
-[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.7.0...v0.8.0
