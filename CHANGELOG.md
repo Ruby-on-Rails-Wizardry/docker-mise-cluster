@@ -11,9 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+### Security
+
+## [0.8.1] - 2026-08-04
+
+### Added
+
+- `bin/ensure-bundle-config` — seed a **private** `<app>/.bundle/config` from
+  `config/bundler-flags.yml` (no shared symlink across apps)
+
+### Changed
+
 - `bin/warm` more resilient for multi-app + Bundler plugins (`bootboot`): shared
   `BUNDLE_USER_HOME=/cache/bundler`, per-Gemfile failure isolation, one retry,
   optional `WARM_ISOLATE_BUNDLE=1` for per-app `BUNDLE_PATH`
+- `bin/setup` / `bin/warm` call `ensure-bundle-config` before install
+- Docs: each app owns `.bundle`; paths still via ENV + `/cache`
 
 ### Fixed
 

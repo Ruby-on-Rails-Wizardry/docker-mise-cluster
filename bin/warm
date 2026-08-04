@@ -16,6 +16,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 ensure_image
 ensure_cache_volume
 
+# Each app owns .bundle/config (bootboot writes here). Seed defaults if missing.
+"${ROOT}/bin/ensure-bundle-config"
+
 log "warming volume ${CACHE_VOLUME} → /cache (project ${ROOT})"
 
 # Inline script runs as the container command after entrypoint prepares /cache.

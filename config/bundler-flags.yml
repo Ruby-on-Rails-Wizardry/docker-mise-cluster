@@ -1,8 +1,11 @@
 ---
-# Shared Bundler *behavior* (not install paths).
-# Symlinked as .bundle/config and <app>/.bundle/config.
-# Paths: BUNDLE_PATH / BUNDLE_CACHE_PATH / BUNDLE_USER_HOME (image or bin/cache-env).
-# Plugins (bootboot) live under BUNDLE_USER_HOME — keep that on /cache, not ~/.bundle.
+# Default Bundler *behavior* (not install paths). Seeded once per app as a
+# private <app>/.bundle/config by bin/ensure-bundle-config — never a shared
+# symlink (bootboot and bundle config set --local must not cross apps).
+#
+# Install paths stay in ENV / image: BUNDLE_PATH, BUNDLE_CACHE_PATH,
+# BUNDLE_USER_HOME (plugins on /cache/bundler). Keep BUNDLE_CLEAN false when
+# apps share BUNDLE_PATH.
 BUNDLE_CACHE_ALL: "true"
 BUNDLE_CACHE_ALL_PLATFORMS: "true"
 BUNDLE_DISABLE_SHARED_GEMS: "true"

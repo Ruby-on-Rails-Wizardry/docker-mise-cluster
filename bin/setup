@@ -51,6 +51,9 @@ echo "$ROOT"
 step "Apps from config/apps.yml"
 "${ROOT}/bin/apps" yaml
 
+step "Per-app .bundle/config (private copies; not a shared symlink)"
+"${ROOT}/bin/ensure-bundle-config"
+
 if [[ "$DOCKER_BUILD" -eq 1 ]]; then
   step "Ensuring base image ${IMAGE}"
   ensure_image

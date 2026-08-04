@@ -58,8 +58,9 @@ spec/examples.txt
 # Docker
 .docker/
 
-# Bundler local config (bin/setup symlinks config/bundler-flags.yml here)
+# Per-app / root Bundler local config (seeded by bin/ensure-bundle-config; not committed)
 .bundle/
+**/.bundle/
 
 # Ruby
 *.gem

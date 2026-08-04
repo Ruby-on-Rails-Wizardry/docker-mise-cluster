@@ -13,7 +13,7 @@ Copy the **orchestration layer** as a unit:
 | `bin/` | `compose`, `warm`, `docker-app`, `apps`, `doctor`, `db-reset`, `lib.sh`, … |
 | `compose.yml` | Stack + shared `x-app` + volume `cache` |
 | `config/apps.yml` | App list (rewrite for your apps) |
-| `config/bundler-flags.yml` | Shared Bundler flags |
+| `config/bundler-flags.yml` | Default Bundler flags (seeded into each app’s private `.bundle/config`) |
 | `nginx/` | Path reverse proxy + home page |
 | `docker/postgres/` | Optional notes (Rails `db:prepare` creates DBs by default) |
 | `nginx/Dockerfile` | Local nginx image build |
@@ -129,7 +129,7 @@ Prefer a **`local`** branch or `compose.override.yml` for Nexus tags so public `
 |---------|----------------|
 | Mount | App lives under cluster root; compose `working_dir: /work/<path>` |
 | Tools | Runtime `mise install` into volume `/cache` |
-| Gems | `BUNDLE_PATH` / cache under `/cache` (image defaults) |
+| Gems | `BUNDLE_PATH` / cache under `/cache` (image defaults); each app has private `.bundle/config` |
 | Boot | `bin/docker-app` or equivalent: bundle, optional yarn, wait for Postgres, `db:prepare`, `rails s` |
 | Path prefix | `RAILS_RELATIVE_URL_ROOT` from compose |
 | Health | `/up` or adjust nginx/docs if you change it |
