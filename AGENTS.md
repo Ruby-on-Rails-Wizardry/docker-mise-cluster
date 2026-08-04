@@ -18,6 +18,7 @@ Reference trees (do not treat as the product):
 | Product shape | **Template** — clone, copy, or untar into a project (**dev** multi-app compose) |
 | OS / base | **Ubuntu only** — prebuilt [ubuntu-mise](https://github.com/Ruby-on-Rails-Wizardry/ubuntu-mise) (`IMAGE=ubuntu-mise:dev`, `pull_policy: never`) |
 | App layout | **Git submodules** (`fred`, `ron`, `harry`, `george` → independent repos) |
+| Shared library gem | **`wizardry_shared`** submodule; Gemfile pins published version; cluster dev uses `bin/local-gem-env` (`BUNDLE_LOCAL__*`) — not bootboot |
 | App ports / paths | Simple name paths; ports from **3001**: fred `/fred:3001`, ron `/ron:3002`, harry `/harry:3003`, george `/george:3004` |
 | **Compose project name** | **Directory basename** (Docker default; copy to `wf/` → project `wf`) |
 | **Container user** | Baked into **ubuntu-mise** at **build**; compose does **not** pass user/UID at run time |
@@ -50,6 +51,7 @@ Current app production Dockerfiles use official `ruby:…-slim` multi-stage and 
 | `ron/` | `git@github.com:Ruby-on-Rails-Wizardry/ron.git` | 3002 | `/ron` |
 | `harry/` | `git@github.com:Ruby-on-Rails-Wizardry/harry.git` | 3003 | `/harry` |
 | `george/` | `git@github.com:Ruby-on-Rails-Wizardry/george.git` | 3004 | `/george` |
+| `wizardry_shared/` | `git@github.com:Ruby-on-Rails-Wizardry/wizardry_shared.git` | — | shared gem (not an app) |
 
 Clone: `git clone --recurse-submodules …` or `git submodule update --init --recursive`.  
 App code changes are committed **inside** each app repo, then the parent cluster pin is updated.

@@ -54,6 +54,13 @@ step "Apps from config/apps.yml"
 step "Per-app .bundle/config (private copies; not a shared symlink)"
 "${ROOT}/bin/ensure-bundle-config"
 
+step "Shared gem local overrides (bundle config local.* for path checkouts)"
+# shellcheck disable=SC1090
+eval "$("${ROOT}/bin/local-gem-env")"
+"${ROOT}/bin/local-gem-env" --print | while IFS= read -r line; do
+  echo "  ${line}"
+done
+
 if [[ "$DOCKER_BUILD" -eq 1 ]]; then
   step "Ensuring base image ${IMAGE}"
   ensure_image

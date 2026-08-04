@@ -36,10 +36,9 @@ apps:
     database: george_development
     redis_db: 3
 
-# Shared path-gems mounted into the workspace (optional for MVP).
-# When present, bin/setup does not treat them as Rails apps unless listed under apps.
-shared_gems: []
-# Example:
-# shared_gems:
-#   - name: example_gem
-#     path: example_gem
+# Shared library gems (own repos / submodules). Not Rails apps.
+# Gemfiles pin a published version (Nexus or git tag). Cluster dev uses
+# bundle config local.<name> via bin/local-gem-env → path under the cluster root.
+shared_gems:
+  - name: wizardry_shared
+    path: wizardry_shared

@@ -43,11 +43,13 @@ git submodule update --init --recursive   # after plain clone
 ```
 cluster/   # or wf/ — directory name = Compose project name
 ├── compose.yml               # apps + nginx + db + redis; volume cache → /cache
-├── config/apps.yml           # app list (ports, url_root, databases)
-├── bin/warm                  # crawl tree, install into volume cache
+├── config/apps.yml           # apps + shared_gems
+├── bin/warm                  # install apps into volume cache
+├── bin/local-gem-env         # BUNDLE_LOCAL__* path overrides for shared gems
 ├── bin/setup                 # warm (+ optional host db:prepare)
 ├── bin/compose               # compose wrapper
 ├── fred/ ron/ harry/ george/ # app submodules
+├── wizardry_shared/          # shared library gem (path in dev, pin in Gemfile)
 └── nginx/
 ```
 

@@ -28,6 +28,12 @@ export BUNDLE_USER_HOME="${BUNDLE_USER_HOME:-/cache/bundler}"
 export BUNDLE_CLEAN="${BUNDLE_CLEAN:-false}"
 mkdir -p "${BUNDLE_USER_HOME}" 2>/dev/null || true
 
+# Shared gems: Gemfile pins published version; local path for cluster checkout.
+if [[ -x "${CLUSTER_ROOT}/bin/local-gem-env" ]]; then
+  # shellcheck disable=SC1090
+  eval "$("${CLUSTER_ROOT}/bin/local-gem-env" /work)"
+fi
+
 echo "== ${APP_NAME}: BUNDLE_PATH=${BUNDLE_PATH:-/cache/bundle}"
 echo "== ${APP_NAME}: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH:-/cache/rubygems}"
 echo "== ${APP_NAME}: BUNDLE_USER_HOME=${BUNDLE_USER_HOME}"

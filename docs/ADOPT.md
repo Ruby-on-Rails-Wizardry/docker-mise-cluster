@@ -12,8 +12,9 @@ Copy the **orchestration layer** as a unit:
 |------|------|
 | `bin/` | `compose`, `warm`, `docker-app`, `apps`, `doctor`, `db-reset`, `lib.sh`, … |
 | `compose.yml` | Stack + shared `x-app` + volume `cache` |
-| `config/apps.yml` | App list (rewrite for your apps) |
+| `config/apps.yml` | App list + `shared_gems` (rewrite for your apps) |
 | `config/bundler-flags.yml` | Default Bundler flags (seeded into each app’s private `.bundle/config`) |
+| `bin/local-gem-env` | Dev path overrides for shared gems (`BUNDLE_LOCAL__*`) |
 | `nginx/` | Path reverse proxy + home page |
 | `docker/postgres/` | Optional notes (Rails `db:prepare` creates DBs by default) |
 | `nginx/Dockerfile` | Local nginx image build |
@@ -50,6 +51,33 @@ Also update:
 - **`Taskfile.yml`** — `up:*` / `db:reset:*` / `task <app>` if you keep shortcuts  
 
 Path prefixes often **differ** from directory names in real systems (e.g. `/activity` vs `ron/`). Set `url_root` to the **browser path**, not necessarily the folder name.
+
+## Shared library gems (path in dev, published in deploy)
+
+Do **not** use bootboot for “local path vs Nexus.” Use Bundler’s local override:
+
+| Environment | Resolution |
+|-------------|------------|
+| **Deploy / lock truth** | Gemfile pins a version from Nexus (or git branch/version as a stand-in) |
+| **Cluster dev** | Same Gemfile; `bin/local-gem-env` exports `BUNDLE_LOCAL__GEMNAME=/work/…` so Bundler uses the path checkout |
+
+Demo gem: **[wizardry_shared](https://github.com/Ruby-on-Rails-Wizardry/wizardry_shared)** (submodule + `shared_gems` in `config/apps.yml`).
+
+```ruby
+# App Gemfile — published form (deploy never sets BUNDLE_LOCAL__*)
+gem "wizardry_shared", "0.1.0",
+  git: "https://github.com/Ruby-on-Rails-Wizardry/wizardry_shared.git",
+  branch: "master"   # local.* requires a branch, not tag-only
+```
+
+```bash
+eval "$(bin/local-gem-env /work)"   # set by warm / docker-app automatically
+```
+
+Notes:
+
+- Real Nexus: drop the `git:` / `branch:` and use your gem source + version only.
+- Nested monorepo checkouts sometimes break submodule `.git` files inside the container; a normal `git clone --recurse-submodules` of the cluster (or a full clone of the shared gem) keeps `local.*` working.
 
 ## Host base image (ubuntu-mise)
 

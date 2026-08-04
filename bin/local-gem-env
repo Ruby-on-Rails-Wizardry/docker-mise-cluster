@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Emit `export BUNDLE_LOCAL__GEM=path` for shared_gems in config/apps.yml.
+#
+# This is the clean path-vs-published pattern (no bootboot):
+#   Gemfile pins a published version (Nexus / git tag).
+#   Dev sets local.<gem> so Bundler uses the path checkout instead.
+#
+# Usage:
+#   eval "$(bin/local-gem-env)"         # host absolute paths under cluster root
+#   eval "$(bin/local-gem-env /work)"   # container paths (compose / warm)
+#   bin/local-gem-env --print           # show without export keyword
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APPS_YML="${ROOT}/config/apps.yml"
+PRINT_ONLY=0
+BASE=""
+
+for arg in "$@"; do
+  case "$arg" in
+    --print) PRINT_ONLY=1 ;;
+    -h|--help)
+      awk 'NR==1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+      exit 0
+      ;;
+    /*|[a-zA-Z]:*) BASE=$arg ;;
+    *)
+      echo "unknown option: $arg" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "${BASE}" ]]; then
+  BASE="${ROOT}"
+fi
+
+ruby -r yaml -e '
+base = ARGV[0]
+print_only = ARGV[1] == "1"
+cfg = YAML.load_file(ARGV[2]) || {}
+gems = cfg["shared_gems"] || []
+gems.each do |g|
+  next unless g.is_a?(Hash)
+  name = g.fetch("name")
+  path = g.fetch("path", name)
+  # Bundler: local.wizardry_shared → BUNDLE_LOCAL__WIZARDRY_SHARED
+  env = "BUNDLE_LOCAL__" + name.to_s.upcase.tr("-", "_")
+  full = File.join(base, path)
+  if print_only
+    puts "#{env}=#{full}"
+  else
+    puts "export #{env}=#{full.inspect}"
+  end
+end
+' "${BASE}" "${PRINT_ONLY}" "${APPS_YML}"
