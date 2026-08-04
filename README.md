@@ -9,8 +9,8 @@ cd ../ubuntu-mise && task build && cd -
 mise install && task doctor
 bin/compose build nginx   # local cluster-nginx:dev
 task warm                 # fill volume `cache` → /cache
-task up:fred              # or: task up:all
-# http://localhost:8080/fred/   … /ron/ /harry/ /george/
+task up:all               # or: task up:fred (single app)
+# http://localhost:8080/   (/fred/ /ron/ /harry/ /george/)
 ```
 
 | Step | What |

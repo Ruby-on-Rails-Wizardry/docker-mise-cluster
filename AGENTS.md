@@ -153,7 +153,7 @@ bin/db-reset --host george     # force host rails (after bin/setup)
 mise install                   # Task on host
 cd ../ubuntu-mise && task build && cd -
 task warm                      # volume cache → /cache
-task up:fred                   # or up:all
+task up:all                    # or up:fred
 task db:reset:fred
 task compose -- ps
 task shell:dev

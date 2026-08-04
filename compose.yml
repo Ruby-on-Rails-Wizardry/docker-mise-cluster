@@ -3,7 +3,7 @@
 # Build base first:  cd ../ubuntu-mise && task build
 # Warm caches:       task warm
 # Build nginx once:  bin/compose build nginx
-# Run:               task up:fred | task up:all
+# Run:               task up:all | task up:fred
 #
 # Volume `cache` → /cache (mise/gems/yarn via image ENV). Project at /work.
 # Compose project name = directory basename. Topology only — no healthchecks;

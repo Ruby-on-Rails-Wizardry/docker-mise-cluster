@@ -94,5 +94,5 @@ else
 fi
 
 step "Done"
-echo "Next: task up:fred   # or task up:all"
-echo "      http://localhost:8080/fred/"
+echo "Next: task up:all"
+echo "      http://localhost:8080/   (/fred/ /ron/ /harry/ /george/)"

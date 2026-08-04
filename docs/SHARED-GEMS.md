@@ -123,7 +123,7 @@ cd docker-mise-cluster
 git -C wizardry_shared checkout master
 
 task warm          # sets BUNDLE_LOCAL__* inside the warm container
-task up:fred
+task up:all
 ```
 
 Host-side bundle (optional):

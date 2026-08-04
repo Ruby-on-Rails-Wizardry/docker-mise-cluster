@@ -5,7 +5,7 @@
 # Prebuilt base only: IMAGE=ubuntu-mise:dev (pull_policy: never).
 #   cd ../ubuntu-mise && task build
 #   task warm
-#   task up:fred          # or up:ron | up:harry | up:george | up:all
+#   task up:all           # or up:fred | up:ron | up:harry | up:george
 #
 # Shared volume `cache` → /cache. Compose project name = directory basename.
 
