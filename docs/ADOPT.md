@@ -4,21 +4,47 @@ This repo (**docker-mise-cluster**) is a **dev multi-app shell**: Compose, nginx
 
 Typical layout when adopting: clone or copy this tree as **`work/`** (directory name becomes the Compose project name).
 
+## Preferred: sibling cluster-tasks + this template
+
+Host orchestration is extracted into **[cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** (sibling clone). The cluster keeps **compose, nginx, apps.yml, app submodules**.
+
+```text
+parent/
+├── cluster-tasks/           # clone once; shared by many clusters
+└── work/                    # this template (or docker-mise-cluster/)
+    ├── Taskfile.yml         # includes ../cluster-tasks (wire manages)
+    ├── bin/                 # wrappers + materialized in-container scripts
+    ├── config/apps.yml
+    ├── compose.yml
+    └── …
+```
+
+```bash
+git clone git@github.com:Ruby-on-Rails-Wizardry/cluster-tasks.git ../cluster-tasks
+# this tree already present as work/ or docker-mise-cluster/
+cd work   # or docker-mise-cluster
+../cluster-tasks/bin/wire --yes
+task doctor
+task warm
+task up:all
+```
+
+`wire` is idempotent: host wrappers, materializes `docker-app` / `apps` / `local-gem-env` for `/work`, sets `BUNDLE_CLEAN=false`, installs Task include with `flatten: true`.
+
 ## What to bring over
 
-Copy the **orchestration layer** as a unit:
+Copy the **project-owned** layer (apps + topology). Prefer wiring **cluster-tasks** for host bins rather than forking them forever:
 
 | Path | Role |
 |------|------|
-| `bin/` | `compose`, `warm`, `docker-app`, `apps`, `doctor`, `db-reset`, `lib.sh`, … |
+| `bin/` (after wire) | Host wrappers → cluster-tasks; materialized `docker-app`, `apps`, `local-gem-env` |
 | `compose.yml` | Stack + shared `x-app` + volume `cache` |
 | `config/apps.yml` | App list + `shared_gems` (rewrite for your apps) |
 | `config/bundler-flags.yml` | Default Bundler flags (seeded into each app’s private `.bundle/config`) |
-| `bin/local-gem-env` | Dev path overrides for shared gems (`BUNDLE_LOCAL__*`) |
 | `nginx/` | Path reverse proxy + home page |
 | `docker/postgres/` | Optional notes (Rails `db:prepare` creates DBs by default) |
 | `nginx/Dockerfile` | Local nginx image build |
-| `Taskfile.yml`, `mise.toml`, `.mise.env` | Host tasks + defaults |
+| `Taskfile.yml`, `mise.toml`, `.mise.env` | Host tasks + defaults (Taskfile include managed by wire) |
 | Root `package.json` / `yarn.lock` | Yarn workspaces (adjust names) |
 | `.gitignore`, `.dockerignore`, `.env.example` | Hygiene |
 | `.gitmodules` | Point at **your** app repos |
@@ -163,8 +189,9 @@ Production remains **per-app Kamal** (hostname routing), not this compose file �
 
 | Tree | Role |
 |------|------|
-| This repo | Dev multi-app template |
-| `../ubuntu-mise` (umbrella) | Base image + host UX |
+| This repo | Dev multi-app template (consumer of cluster-tasks) |
+| `../cluster-tasks` | Sibling host tooling (`wire`, warm, doctor, Task library) |
+| `../ubuntu-mise` | Base image + host UX |
 | `../partial/` (umbrella) | Anonymized real multi-app cluster (oauth2, Nexus-style images) — patterns only |
 
 ## Checklist

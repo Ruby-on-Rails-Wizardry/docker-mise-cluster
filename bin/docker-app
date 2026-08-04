@@ -83,16 +83,35 @@ else
 fi
 
 wait_for_postgres() {
+  # Readiness only — do not open the app database. On a fresh volume the app DB
+  # does not exist until rails db:prepare below; connecting via ActiveRecord
+  # would always fail until then.
   local attempts="${1:-30}"
   local i
+  local host="${POSTGRES_HOST:-db}"
+  local user="${POSTGRES_USER:-cluster}"
+  local port="${POSTGRES_PORT:-5432}"
+
+  if [[ -n "${DATABASE_URL:-}" ]]; then
+    # postgresql://user:pass@host:port/db  or  postgresql://user@host/db
+    if [[ "${DATABASE_URL}" =~ @([^:/]+)(:([0-9]+))?/ ]]; then
+      host="${BASH_REMATCH[1]}"
+      [[ -n "${BASH_REMATCH[3]:-}" ]] && port="${BASH_REMATCH[3]}"
+    fi
+    if [[ "${DATABASE_URL}" =~ ://([^:/@]+) ]]; then
+      user="${BASH_REMATCH[1]}"
+    fi
+  fi
+
   for ((i = 1; i <= attempts; i++)); do
-    if bin/rails runner 'ActiveRecord::Base.connection.execute("SELECT 1")' >/dev/null 2>&1; then
+    if command -v pg_isready >/dev/null 2>&1 && \
+      pg_isready -h "${host}" -p "${port}" -U "${user}" -d postgres >/dev/null 2>&1; then
       return 0
     fi
     echo "== ${APP_NAME}: waiting for PostgreSQL (${i}/${attempts})…"
     sleep 2
   done
-  echo "error: ${APP_NAME}: could not connect to PostgreSQL" >&2
+  echo "error: ${APP_NAME}: could not connect to PostgreSQL (${host}:${port})" >&2
   return 1
 }
 

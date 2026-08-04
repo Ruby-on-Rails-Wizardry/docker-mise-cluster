@@ -97,24 +97,29 @@ local.wizardry_shared  →  env BUNDLE_LOCAL__WIZARDRY_SHARED
 |-------|------|
 | `wizardry_shared/` | Submodule → own git repo |
 | `config/apps.yml` → `shared_gems` | List of name/path pairs |
-| `bin/local-gem-env` | Emit `export BUNDLE_LOCAL__…=path` |
-| `bin/warm` | `eval "$(…/local-gem-env /work)"` before bundle |
-| `bin/docker-app` | Same for app boot |
+| `bin/local-gem-env` | Emit `export BUNDLE_LOCAL__…=path` (materialized from **cluster-tasks** via `wire`) |
+| `bin/warm` | Host wrapper → cluster-tasks; `eval "$(…/local-gem-env /work)"` before bundle |
+| `bin/docker-app` | Materialized for `/work`; same local-gem eval on app boot |
 | `bin/setup` | Prints host overrides after seeding `.bundle/config` |
 | App Gemfiles | Pin `wizardry_shared` `0.1.0` (git + branch demo form) |
 | Home pages | `WizardryShared.hello("Fred")` (etc.) so the load path is visible |
+| `BUNDLE_CLEAN=false` | Wire + warm keep multi-app shared `BUNDLE_PATH` from pruning siblings |
 
 Private per-app `.bundle/config` (from `bin/ensure-bundle-config`) holds **behavior**
 flags only. Path overrides stay in **ENV** so host vs `/work` paths do not fight
 inside a committed config file.
 
+Host implementation source: sibling **[cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** (`../cluster-tasks/bin/wire --yes`).
+
 ---
 
-## Day-to-day (standalone cluster)
+## Day-to-day (standalone cluster + sibling tooling)
 
-Work in a **standalone** clone, not nested under `docker-mise/`:
+Work in a **standalone** cluster clone, not nested under `docker-mise/`:
 
 ```bash
+# siblings
+git clone git@github.com:Ruby-on-Rails-Wizardry/cluster-tasks.git
 git clone --recurse-submodules \
   git@github.com:Ruby-on-Rails-Wizardry/docker-mise-cluster.git
 cd docker-mise-cluster
@@ -122,6 +127,8 @@ cd docker-mise-cluster
 # Submodules often detach HEAD; local.* wants a real branch
 git -C wizardry_shared checkout master
 
+../cluster-tasks/bin/wire --yes
+task doctor
 task warm          # sets BUNDLE_LOCAL__* inside the warm container
 task up:all
 ```
@@ -139,6 +146,7 @@ Recommended layout:
 Ruby-on-Rails-Wizardry/
 ├── docker-mise/                 # ubuntu-mise / alpine / arch only
 │   └── ubuntu-mise/             # task build → ubuntu-mise:dev
+├── cluster-tasks/               # sibling host tooling (wire)
 └── docker-mise-cluster/         # this product
     ├── fred/ ron/ harry/ george/
     └── wizardry_shared/

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Sibling [cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** adoption (branch `cluster-tasks-phase1`): `task wire` / `../cluster-tasks/bin/wire`, thin host `bin/*` wrappers, materialized `docker-app` / `apps` / `local-gem-env`, Task include with `flatten: true`
+- Docs: AGENTS / ADOPT / SHARED-GEMS describe sibling wire + `BUNDLE_CLEAN=false`
+
 ### Changed
 
 - **cluster-tasks phase 1:** host UX is fully driven by `config/apps.yml` — no
@@ -16,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `bin/apps names-oneline`; per-app Task is `task app -- NAME …`
 
 ### Fixed
+
+- Fresh Postgres volume boot: wait uses `pg_isready` (maintenance DB) before `db:prepare` (via rematerialized `bin/docker-app` from cluster-tasks)
 
 ### Security
 
