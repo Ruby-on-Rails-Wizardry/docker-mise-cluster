@@ -190,7 +190,8 @@ First tagged release of the multi-app Docker + mise cluster template.
 - Docker image build: copy root `Gemfile` so `mise install` installs Ruby (not only Node/Yarn)
 - Untrusted `fred/mise.toml` / `george/mise.toml` under the host bind mount
 
-[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.6.0...v0.7.0
