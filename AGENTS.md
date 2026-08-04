@@ -154,11 +154,10 @@ Apps `depends_on` db/redis/nginx for start order. `bin/docker-app` waits for Pos
 Shared Postgres; only the named app’s database is dropped/recreated (`config/apps.yml` → `database:`).
 
 ```bash
-task db:reset:fred             # or: bin/db-reset fred
-task db:reset:ron
-task db:reset -- fred ron      # multiple
-bin/db-reset --docker harry    # force rails via compose
-bin/db-reset --host george     # force host rails (after bin/setup)
+task db:reset -- app1          # or: bin/db-reset app1
+task db:reset -- app1 app2     # multiple
+bin/db-reset --docker app1     # force rails via compose
+bin/db-reset --host app1       # force host rails (after bin/setup)
 ```
 
 `bin/setup --reset` still resets **all** apps during full host setup.
@@ -169,11 +168,12 @@ bin/db-reset --host george     # force host rails (after bin/setup)
 mise install                   # Task on host
 cd ../ubuntu-mise && task build && cd -
 task warm                      # volume cache → /cache
-task up:all                    # or up:fred
-task db:reset:fred
+task up:all                    # or: task up -- <app>
+task db:reset -- <app>
 task compose -- ps
 task shell:dev
 task apps
+task app -- <app> setup        # delegate into app Taskfile
 ```
 
 `bin/*` remains the implementation; Task is optional host UX (same pattern as ubuntu-mise).

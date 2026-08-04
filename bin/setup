@@ -95,4 +95,13 @@ fi
 
 step "Done"
 echo "Next: task up:all"
-echo "      http://localhost:8080/   (/fred/ /ron/ /harry/ /george/)"
+if [[ -x "${ROOT}/bin/apps" ]]; then
+  roots="$("${ROOT}/bin/apps" url-roots 2>/dev/null || true)"
+  if [[ -n "${roots}" ]]; then
+    echo "      http://localhost:8080/   (${roots})"
+  else
+    echo "      http://localhost:8080/"
+  fi
+else
+  echo "      http://localhost:8080/"
+fi

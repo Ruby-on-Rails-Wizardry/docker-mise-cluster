@@ -48,7 +48,7 @@ Also update:
 
 - **`.gitmodules`** — real remotes and branches  
 - **`package.json` `workspaces`** — real app directory names  
-- **`Taskfile.yml`** — `up:*` / `db:reset:*` / `task <app>` if you keep shortcuts  
+- **`Taskfile.yml`** — generic `up:all` / `up -- name` / `db:reset -- name` / `app -- name` (no hard-coded apps)  
 
 Path prefixes often **differ** from directory names in real systems (e.g. `/activity` vs `ron/`). Set `url_root` to the **browser path**, not necessarily the folder name.
 
@@ -87,8 +87,8 @@ cd work               # this tree (or docker-mise-cluster/)
 mise install          # Task, etc. on host if you use Task
 bin/compose build nginx
 task warm             # fill Docker volume `cache` → /cache (apps from config/apps.yml)
-task up:all           # or task up:fred for a single app
-# http://localhost:8080/   (/fred/ /ron/ /harry/ /george/)
+task up:all           # or: task up -- app1
+# http://localhost:8080/   (url_roots from config/apps.yml)
 ```
 
 | Step | What |

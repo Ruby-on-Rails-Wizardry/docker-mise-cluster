@@ -5,11 +5,10 @@
 # left alone (Postgres is shared; only the named database is reset).
 #
 # Usage:
-#   bin/db-reset fred
-#   bin/db-reset george
-#   bin/db-reset fred george
-#   bin/db-reset --docker fred     # rails via compose (app service network)
-#   bin/db-reset --host fred       # rails on the host (default when possible)
+#   bin/db-reset APP
+#   bin/db-reset APP1 APP2
+#   bin/db-reset --docker APP      # rails via compose (app service network)
+#   bin/db-reset --host APP        # rails on the host (default when possible)
 #
 # Prerequisites:
 #   - Postgres up (this script starts `db` if needed)
@@ -55,8 +54,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ${#APPS[@]} -eq 0 ]]; then
-  echo "error: specify at least one app name (e.g. fred, george)" >&2
-  echo "Known apps: $("${ROOT}/bin/apps" names | tr '\n' ' ')" >&2
+  echo "error: specify at least one app name from config/apps.yml" >&2
+  echo "Known apps: $("${ROOT}/bin/apps" names-oneline 2>/dev/null || true)" >&2
   exit 1
 fi
 

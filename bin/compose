@@ -4,8 +4,8 @@
 # - Ensures prebuilt ubuntu-mise:dev + shared cache volume
 # - Uses project compose.yml (Compose default discovery)
 #
-#   bin/compose up fred
-#   bin/compose up fred ron harry george
+#   bin/compose up                    # all services defined in compose.yml
+#   bin/compose up $(bin/apps names-oneline)
 #   bin/compose --profile dev run --rm dev
 set -euo pipefail
 # shellcheck source=lib.sh

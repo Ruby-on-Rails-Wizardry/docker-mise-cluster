@@ -7,7 +7,7 @@
 #
 # Usage:
 #   bin/ensure-bundle-config           # all apps (+ root if Gemfile)
-#   bin/ensure-bundle-config fred ron  # named app paths only
+#   bin/ensure-bundle-config app1 app2  # named app paths only
 set -euo pipefail
 # shellcheck source=lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"

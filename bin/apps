@@ -2,11 +2,14 @@
 # Read config/apps.yml and print app / shared-gem fields for other scripts.
 #
 # Usage:
-#   bin/apps names          # fred ron harry george
-#   bin/apps paths          # fred ron harry george  (path field)
-#   bin/apps ports          # name=port lines
-#   bin/apps shared-paths   # shared gem paths
-#   bin/apps yaml           # dump validated YAML summary
+#   bin/apps names           # one name per line
+#   bin/apps paths           # one path per line
+#   bin/apps ports           # name\tpath\tport
+#   bin/apps url-roots       # /app1 /app2 … (space-separated, trailing slash normalized)
+#   bin/apps port-list       # 3001 3002 … (space-separated)
+#   bin/apps names-oneline   # app1 app2 … (for compose up)
+#   bin/apps shared-paths    # shared gem paths
+#   bin/apps yaml            # dump validated YAML summary
 
 set -euo pipefail
 
@@ -32,6 +35,18 @@ when "names"
   apps.each { |a| puts a.fetch("name") }
 when "paths"
   apps.each { |a| puts a.fetch("path", a.fetch("name")) }
+when "names-oneline"
+  puts apps.map { |a| a.fetch("name") }.join(" ")
+when "port-list"
+  puts apps.map { |a| a.fetch("port") }.join(" ")
+when "url-roots"
+  roots = apps.map { |a| a["url_root"] }.compact.map { |r|
+    r = r.to_s
+    r = "/#{r}" unless r.start_with?("/")
+    r = "#{r}/" unless r.end_with?("/")
+    r
+  }
+  puts roots.join(" ")
 when "ports"
   apps.each do |a|
     name = a.fetch("name")

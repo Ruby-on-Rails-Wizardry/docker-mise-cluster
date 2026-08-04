@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **cluster-tasks phase 1:** host UX is fully driven by `config/apps.yml` — no
+  hard-coded demo app names in `bin/*` or Taskfile; `up:all` uses
+  `bin/apps names-oneline`; per-app Task is `task app -- NAME …`
+
 ### Fixed
 
 ### Security
@@ -28,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Prefer **`work/`** as the example clone/directory name (Compose project basename); drop `wf` naming in docs and root `package.json`
-- Default post-warm / setup next step: **`task up:all`** (single-app `up:fred` still available)
+- Default post-warm / setup next step: **`task up:all`** (or `task up -- <app>`)
 - `bin/warm`: skip `bundle cache --all-platforms` when already satisfied
   (`WARM_FORCE_CACHE=1` to always refresh `/cache/rubygems`)
 - `bin/warm` bundles root + `config/apps.yml` apps only (not shared-gem Gemfiles)

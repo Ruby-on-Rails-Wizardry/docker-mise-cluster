@@ -155,6 +155,6 @@ POSTGRESQL_VERSION=${POSTGRESQL_VERSION:-}
 REDIS_VERSION=${REDIS_VERSION}
 TZ=${TZ}
 ROOT=${ROOT}
-APPS=$( [[ -x "${ROOT}/bin/apps" ]] && "${ROOT}/bin/apps" names | tr '\n' ' ' || echo "fred ron harry george" )
+APPS=$( [[ -x "${ROOT}/bin/apps" ]] && "${ROOT}/bin/apps" names-oneline 2>/dev/null || true )
 EOF
 }

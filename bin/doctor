@@ -79,8 +79,20 @@ else
 fi
 
 printf 'INFO POSTGRESQL_VERSION=%s (db image + base client parity)\n' "${POSTGRESQL_VERSION:-}"
-printf 'INFO front door: http://localhost:8080/  (/fred/ /ron/ /harry/ /george/)\n'
-printf 'INFO direct ports: 3001–3004\n'
+if [[ -x "${ROOT}/bin/apps" ]]; then
+  roots="$("${ROOT}/bin/apps" url-roots 2>/dev/null || true)"
+  ports="$("${ROOT}/bin/apps" port-list 2>/dev/null || true)"
+  if [[ -n "${roots}" ]]; then
+    printf 'INFO front door: http://localhost:8080/  (%s)\n' "${roots}"
+  else
+    printf 'INFO front door: http://localhost:8080/\n'
+  fi
+  if [[ -n "${ports}" ]]; then
+    printf 'INFO direct ports: %s\n' "${ports}"
+  fi
+else
+  printf 'INFO front door: http://localhost:8080/\n'
+fi
 
 if [[ "${fail}" -ne 0 ]]; then
   log "doctor: failed"
