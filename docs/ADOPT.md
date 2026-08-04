@@ -2,7 +2,7 @@
 
 This repo (**docker-mise-cluster**) is a **dev multi-app shell**: Compose, nginx path routing, shared Postgres/Redis, and a single Docker volume `cache` for mise/gems/yarn. Demo apps (fred / ron / harry / george) prove the wiring; they are not the product.
 
-Typical layout when adopting: clone or copy this tree as **`wf/`** (directory name becomes the Compose project name).
+Typical layout when adopting: clone or copy this tree as **`work/`** (directory name becomes the Compose project name).
 
 ## What to bring over
 
@@ -83,7 +83,7 @@ task warm:sample    # optional: sibling Rails sample
 ## Cluster bring-up
 
 ```bash
-cd wf                 # this tree
+cd work               # this tree
 mise install          # Task, etc. on host if you use Task
 task warm             # fill Docker volume `cache` → /cache (crawl Gemfile / package.json)
 task up:fred          # or up:all / bin/compose up …
@@ -152,11 +152,11 @@ Production remains **per-app Kamal** (hostname routing), not this compose file �
 |------|------|
 | This repo | Dev multi-app template |
 | `../ubuntu-mise` (umbrella) | Base image + host UX |
-| `../partial/` (umbrella) | Anonymized real wf (oauth2, Nexus-style images) — patterns only |
+| `../partial/` (umbrella) | Anonymized real multi-app cluster (oauth2, Nexus-style images) — patterns only |
 
 ## Checklist
 
-- [ ] `wf/` layout: tooling + real app submodules  
+- [ ] `work/` layout: tooling + real app submodules  
 - [ ] `.gitmodules` → real remotes  
 - [ ] `apps.yml` + `compose.yml` + nginx + DB setup aligned  
 - [ ] `ubuntu-mise:dev` built on this host  

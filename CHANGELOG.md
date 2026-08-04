@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Prefer **`work/`** as the example clone/directory name (Compose project basename); drop `wf` naming in docs and root `package.json`
 - `bin/warm`: skip `bundle cache --all-platforms` when already satisfied
   (`WARM_FORCE_CACHE=1` to always refresh `/cache/rubygems`)
 - `bin/warm` bundles root + `config/apps.yml` apps only (not shared-gem Gemfiles)
@@ -99,7 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-**Migration:** existing Compose stacks named `docker-mise-cluster` become a new project (`cluster` under the umbrella, or `wf` when cloned that way). Optional cleanup: `docker compose -p docker-mise-cluster down`. New Postgres DBs (ron/harry) need a fresh `pgdata` volume or manual `CREATE DATABASE` if an old volume is reused.
+**Migration:** existing Compose stacks named `docker-mise-cluster` become a new project (`work` when cloned that way, or the directory basename). Optional cleanup: `docker compose -p docker-mise-cluster down`. New Postgres DBs (ron/harry) need a fresh `pgdata` volume or manual `CREATE DATABASE` if an old volume is reused.
 
 
 ## [0.6.0] - 2026-07-30
@@ -153,8 +154,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **fred** / **george** / **dev** app image is a thin layer on local **ubuntu-mise** (`BASE_IMAGE`, default `ubuntu-mise:dev`) plus PostgreSQL client/libpq — no longer a full Ubuntu+mise rebuild
-- `bin/setup --docker-build` and `task build` ensure the ubuntu-mise base exists (sibling `../ubuntu-mise` or `UBUNTU_MISE_ROOT`) before building `CLUSTER_IMAGE` (`wf-dev:latest`)
-- Project mount / `WORKSPACE` standardized on **`/work`** (was `$HOME/wf`); aligns with ubuntu-mise
+- `bin/setup --docker-build` and `task build` ensure the ubuntu-mise base exists (sibling `../ubuntu-mise` or `UBUNTU_MISE_ROOT`) before building the cluster image
+- Project mount standardized on **`/work`**; aligns with ubuntu-mise
 
 ## [0.2.1] - 2026-07-27
 

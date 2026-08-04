@@ -1,14 +1,14 @@
-# Agent guide — wf (multi-app Docker cluster template)
+# Agent guide — work (multi-app Docker cluster template)
 
 ## Purpose
 
-`wf/` is the **product template**: a copyable/cloneable starting point for multi-app Rails Docker **development** on **Ubuntu** with shared Bundler + classic Yarn 1 caches.
+`work/` is the **product template**: a copyable/cloneable starting point for multi-app Rails Docker **development** on **Ubuntu** with shared Bundler + classic Yarn 1 caches. (Directory name becomes the Compose project name; this repo may also live as `docker-mise-cluster/`.)
 
 It is **not** the production deploy topology. Production follows Rails/Kamal defaults per app (see [Production deployment](#production-deployment-kamal--not-compose)).
 
 Reference trees (do not treat as the product):
 
-- `../partial/` — anonymized real weasily/wf cluster (nginx, oauth2, postgres, submodules)
+- `../partial/` — anonymized real multi-app cluster (nginx, oauth2, postgres, submodules)
 - `../experment/` — cache experiment; use branch **`dry-yarn-1`** for classic Yarn patterns
 
 ## Decisions (locked for MVP)
@@ -20,14 +20,14 @@ Reference trees (do not treat as the product):
 | App layout | **Git submodules** (`fred`, `ron`, `harry`, `george` → independent repos) |
 | Shared library gem | **`wizardry_shared`** submodule; Gemfile pins published version; cluster dev uses `bin/local-gem-env` (`BUNDLE_LOCAL__*`) — not bootboot. See [docs/SHARED-GEMS.md](docs/SHARED-GEMS.md) |
 | App ports / paths | Simple name paths; ports from **3001**: fred `/fred:3001`, ron `/ron:3002`, harry `/harry:3003`, george `/george:3004` |
-| **Compose project name** | **Directory basename** (Docker default; copy to `wf/` → project `wf`) |
+| **Compose project name** | **Directory basename** (Docker default; copy to `work/` → project `work`) |
 | **Container user** | Baked into **ubuntu-mise** at **build**; compose does **not** pass user/UID at run time |
 | **Cache** | One Docker volume named **`cache`** → `/cache`; fill with **`task warm`** (crawl Gemfile / package.json) |
 | **Production deploy** | **N Kamal apps, one VPS** (Approach A): each app has its own image + `config/deploy.yml`; **kamal-proxy** routes by **hostname**. Not `docker compose` of this cluster in prod. |
 | Host UX | Cluster + each app: **mise** + **Task** like ubuntu-sample (`.mise.env` with `POSTGRESQL_VERSION`, `bin/*`, mirrored tasks). Cluster orchestrates multi-app + **nginx** path routing. |
 | Yarn | **Classic 1.22.x** (not Berry) |
 | MVP services | Image + compose + shared gem/yarn caches + nginx + Postgres + Redis |
-| Apply to weasily | New `wf/` tree; leave `partial/` as reference |
+| Apply to a real project | New `work/` tree; leave `partial/` as reference only |
 | **Mise install timing** | **Development:** `mise install` at **runtime** into **`/cache`** volume. **Production:** tools frozen at **image build**; server start only (no install/activate on boot). |
 | **Mise in production** | **Default: do not use mise** — keep official multi-stage language images (`ruby:*-slim` + bundle), with pin parity to Gemfile. **If mise is used:** **builder stage only** (BuildKit cache mounts OK); copy frozen binaries/app into a slim runtime; final image should not require the mise binary, shims, or `mise activate`. Never ship full ubuntu-mise as a prod base. |
 

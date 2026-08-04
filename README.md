@@ -1,4 +1,4 @@
-# wf — multi-app Docker dev cluster (Ubuntu template)
+# work — multi-app Docker dev cluster (Ubuntu template)
 
 Template for a **multi-app Rails development cluster** on **Ubuntu** (local Docker Compose). **Production** uses **Kamal** per app — see [AGENTS.md](AGENTS.md#production-deployment-kamal--not-compose).
 
@@ -41,7 +41,7 @@ git submodule update --init --recursive   # after plain clone
 ## Layout
 
 ```
-cluster/   # or wf/ — directory name = Compose project name
+work/      # or docker-mise-cluster/ — directory name = Compose project name
 ├── compose.yml               # apps + nginx + db + redis; volume cache → /cache
 ├── config/apps.yml           # apps + shared_gems
 ├── bin/warm                  # install apps into volume cache
@@ -96,7 +96,7 @@ Full guide: **[docs/ADOPT.md](docs/ADOPT.md)** (what to copy, what to rewrite, N
 
 Short version:
 
-1. Clone/copy as **`wf/`** with real app submodules (not necessarily the demo apps).
+1. Clone/copy as **`work/`** with real app submodules (not necessarily the demo apps).
 2. Align **`config/apps.yml`**, **`compose.yml`**, **`nginx/`**, and DB setup for each app.
 3. Build **`ubuntu-mise:dev`** and **`bin/compose build nginx`**, then `task warm` → `task up:…`.
 
