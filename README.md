@@ -85,6 +85,11 @@ bin/compose --profile dev run --rm dev
 Front door: **http://localhost:8080/**  
 Postgres **5432** / Redis **6379** (dev credentials in `.env.example`).
 
+## Shared gems (path in dev / published in deploy)
+
+**[docs/SHARED-GEMS.md](docs/SHARED-GEMS.md)** — Bundler `local.*` via `bin/local-gem-env`,
+`wizardry_shared` demo, why the cluster must be a standalone clone.
+
 ## Adopting into a real project
 
 Full guide: **[docs/ADOPT.md](docs/ADOPT.md)** (what to copy, what to rewrite, Nexus/images, bring-up).

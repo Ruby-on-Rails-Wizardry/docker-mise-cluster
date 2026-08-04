@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (submodule + `shared_gems` in `config/apps.yml`); all four apps pin `0.1.0`
 - `bin/local-gem-env` — emit `BUNDLE_LOCAL__*` for path checkouts (path-vs-published
   without bootboot); wired into `bin/warm` / `bin/docker-app` / `bin/setup`
+- `docs/SHARED-GEMS.md` — path-vs-published shared gem pattern, day-to-day, troubleshooting
 
 ### Changed
 

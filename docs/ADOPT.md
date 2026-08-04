@@ -54,30 +54,12 @@ Path prefixes often **differ** from directory names in real systems (e.g. `/acti
 
 ## Shared library gems (path in dev, published in deploy)
 
-Do **not** use bootboot for “local path vs Nexus.” Use Bundler’s local override:
+Full write-up: **[docs/SHARED-GEMS.md](SHARED-GEMS.md)** (pattern, day-to-day, add a gem, troubleshooting).
 
-| Environment | Resolution |
-|-------------|------------|
-| **Deploy / lock truth** | Gemfile pins a version from Nexus (or git branch/version as a stand-in) |
-| **Cluster dev** | Same Gemfile; `bin/local-gem-env` exports `BUNDLE_LOCAL__GEMNAME=/work/…` so Bundler uses the path checkout |
-
-Demo gem: **[wizardry_shared](https://github.com/Ruby-on-Rails-Wizardry/wizardry_shared)** (submodule + `shared_gems` in `config/apps.yml`).
-
-```ruby
-# App Gemfile — published form (deploy never sets BUNDLE_LOCAL__*)
-gem "wizardry_shared", "0.1.0",
-  git: "https://github.com/Ruby-on-Rails-Wizardry/wizardry_shared.git",
-  branch: "master"   # local.* requires a branch, not tag-only
-```
-
-```bash
-eval "$(bin/local-gem-env /work)"   # set by warm / docker-app automatically
-```
-
-Notes:
-
-- Real Nexus: drop the `git:` / `branch:` and use your gem source + version only.
-- Nested monorepo checkouts sometimes break submodule `.git` files inside the container; a normal `git clone --recurse-submodules` of the cluster (or a full clone of the shared gem) keeps `local.*` working.
+Short version: Gemfile pins the **published** form; cluster dev uses
+`bin/local-gem-env` → `BUNDLE_LOCAL__*` path override. Do not use bootboot for this.
+Demo: **wizardry_shared** + `shared_gems` in `config/apps.yml`. Work in a
+**standalone** `docker-mise-cluster` clone (not nested under `docker-mise/`).
 
 ## Host base image (ubuntu-mise)
 
