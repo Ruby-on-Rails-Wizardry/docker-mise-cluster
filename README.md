@@ -75,8 +75,8 @@ There is no separate host `.cache` tree for containers. Host and Mac/WSL all war
 | george | 3004 | `/george` | `george_development` | 3 |
 
 ```bash
-task up:fred
 task up:all
+task up:fred
 task compose -- ps
 task db:reset:fred
 bin/compose --profile dev run --rm dev
@@ -98,7 +98,7 @@ Short version:
 
 1. Clone/copy as **`work/`** with real app submodules (not necessarily the demo apps).
 2. Align **`config/apps.yml`**, **`compose.yml`**, **`nginx/`**, and DB setup for each app.
-3. Build **`ubuntu-mise:dev`** and **`bin/compose build nginx`**, then `task warm` → `task up:…`.
+3. Build **`ubuntu-mise:dev`** and **`bin/compose build nginx`**, then `task warm` → `task up:all`.
 
 ## License
 
