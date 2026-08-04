@@ -56,6 +56,8 @@ Path prefixes often **differ** from directory names in real systems (e.g. `/acti
 
 Full write-up: **[docs/SHARED-GEMS.md](SHARED-GEMS.md)** (pattern, day-to-day, add a gem, troubleshooting).
 
+Reusable host Task/bin tooling (future extract): **[cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** — see that repo’s `docs/PLAN.md` / `docs/TODO.md`.
+
 Short version: Gemfile pins the **published** form; cluster dev uses
 `bin/local-gem-env` → `BUNDLE_LOCAL__*` path override. Do not use bootboot for this.
 Demo: **wizardry_shared** + `shared_gems` in `config/apps.yml`. Work in a
