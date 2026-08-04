@@ -10,6 +10,9 @@ _cache_env_main() {
   export CACHE_ROOT="${CACHE_ROOT:-/cache}"
   export BUNDLE_PATH="${BUNDLE_PATH:-${CACHE_ROOT}/bundle}"
   export BUNDLE_CACHE_PATH="${BUNDLE_CACHE_PATH:-${CACHE_ROOT}/rubygems}"
+  # Shared plugin home (bootboot, etc.) on the volume — not ephemeral ~/.bundle.
+  export BUNDLE_USER_HOME="${BUNDLE_USER_HOME:-${CACHE_ROOT}/bundler}"
+  export BUNDLE_CLEAN="${BUNDLE_CLEAN:-false}"
   export YARN_CACHE_FOLDER="${YARN_CACHE_FOLDER:-${CACHE_ROOT}/yarn-cache}"
   export YARN_OFFLINE_MIRROR="${YARN_OFFLINE_MIRROR:-${CACHE_ROOT}/yarn}"
 }
@@ -35,8 +38,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
       echo "Wrote .yarnrc (offline-mirror → ${YARN_OFFLINE_MIRROR})"
       ;;
     "")
-      printf 'CACHE_ROOT=%s\nBUNDLE_PATH=%s\nBUNDLE_CACHE_PATH=%s\nYARN_CACHE_FOLDER=%s\nYARN_OFFLINE_MIRROR=%s\n' \
-        "${CACHE_ROOT}" "${BUNDLE_PATH}" "${BUNDLE_CACHE_PATH}" "${YARN_CACHE_FOLDER}" "${YARN_OFFLINE_MIRROR}"
+      printf 'CACHE_ROOT=%s\nBUNDLE_PATH=%s\nBUNDLE_CACHE_PATH=%s\nBUNDLE_USER_HOME=%s\nBUNDLE_CLEAN=%s\nYARN_CACHE_FOLDER=%s\nYARN_OFFLINE_MIRROR=%s\n' \
+        "${CACHE_ROOT}" "${BUNDLE_PATH}" "${BUNDLE_CACHE_PATH}" "${BUNDLE_USER_HOME}" "${BUNDLE_CLEAN}" \
+        "${YARN_CACHE_FOLDER}" "${YARN_OFFLINE_MIRROR}"
       ;;
     -h|--help)
       cat <<'EOF'

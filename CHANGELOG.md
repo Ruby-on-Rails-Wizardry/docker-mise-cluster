@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `bin/warm` more resilient for multi-app + Bundler plugins (`bootboot`): shared
+  `BUNDLE_USER_HOME=/cache/bundler`, per-Gemfile failure isolation, one retry,
+  optional `WARM_ISOLATE_BUNDLE=1` for per-app `BUNDLE_PATH`
+
 ### Fixed
 
 ### Security

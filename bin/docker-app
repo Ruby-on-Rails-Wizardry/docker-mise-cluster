@@ -23,8 +23,14 @@ if command -v mise >/dev/null 2>&1; then
   eval "$(mise activate bash)" 2>/dev/null || true
 fi
 
+# Plugins (bootboot, …) on the shared volume when image/runtime did not set them.
+export BUNDLE_USER_HOME="${BUNDLE_USER_HOME:-/cache/bundler}"
+export BUNDLE_CLEAN="${BUNDLE_CLEAN:-false}"
+mkdir -p "${BUNDLE_USER_HOME}" 2>/dev/null || true
+
 echo "== ${APP_NAME}: BUNDLE_PATH=${BUNDLE_PATH:-/cache/bundle}"
 echo "== ${APP_NAME}: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH:-/cache/rubygems}"
+echo "== ${APP_NAME}: BUNDLE_USER_HOME=${BUNDLE_USER_HOME}"
 echo "== ${APP_NAME}: YARN_CACHE_FOLDER=${YARN_CACHE_FOLDER:-/cache/yarn-cache}"
 echo "== ${APP_NAME}: ruby $(ruby -v 2>/dev/null || echo missing)"
 echo "== ${APP_NAME}: yarn $(yarn --version 2>/dev/null || echo unknown)"
@@ -35,7 +41,11 @@ else
   echo "== ${APP_NAME}: bundle install (prefer local gem cache)"
   if ! bundle install --local; then
     echo "== ${APP_NAME}: local cache incomplete; fetching missing gems"
-    bundle install
+    if ! bundle install; then
+      echo "== ${APP_NAME}: retry bundle install" >&2
+      sleep 1
+      bundle install
+    fi
   fi
 fi
 

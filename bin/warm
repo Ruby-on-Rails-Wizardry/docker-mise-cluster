@@ -27,14 +27,24 @@ export MISE_DATA_DIR="${MISE_DATA_DIR:-/cache/mise}"
 export MISE_CACHE_DIR="${MISE_CACHE_DIR:-/cache/mise-cache}"
 export BUNDLE_PATH="${BUNDLE_PATH:-/cache/bundle}"
 export BUNDLE_CACHE_PATH="${BUNDLE_CACHE_PATH:-/cache/rubygems}"
+# Plugins (e.g. bootboot) + user config on the volume — not ephemeral ~/.bundle.
+# Shared across apps so plugin "bootboot" is installed once, not per Gemfile.
+export BUNDLE_USER_HOME="${BUNDLE_USER_HOME:-/cache/bundler}"
+# Never prune gems missing from the *current* Gemfile (multi-app share BUNDLE_PATH).
+export BUNDLE_CLEAN="${BUNDLE_CLEAN:-false}"
 export YARN_CACHE_FOLDER="${YARN_CACHE_FOLDER:-/cache/yarn-cache}"
 export YARN_OFFLINE_MIRROR="${YARN_OFFLINE_MIRROR:-/cache/yarn}"
 export PATH="/docker/bin:${HOME}/.local/bin:${MISE_DATA_DIR}/shims:${PATH}"
+# WARM_ISOLATE_BUNDLE=1 → BUNDLE_PATH=/cache/bundle/<app> (still share rubygems cache + plugins)
+WARM_ISOLATE_BUNDLE="${WARM_ISOLATE_BUNDLE:-0}"
 
 cd /work
 echo "== warm: CACHE_ROOT=${CACHE_ROOT}"
 echo "== warm: BUNDLE_PATH=${BUNDLE_PATH}"
+echo "== warm: BUNDLE_USER_HOME=${BUNDLE_USER_HOME}"
+echo "== warm: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH}"
 echo "== warm: YARN_OFFLINE_MIRROR=${YARN_OFFLINE_MIRROR}"
+echo "== warm: WARM_ISOLATE_BUNDLE=${WARM_ISOLATE_BUNDLE}"
 
 if command -v mise >/dev/null 2>&1; then
   mise trust /work 2>/dev/null || true
@@ -52,7 +62,8 @@ if command -v mise >/dev/null 2>&1; then
   eval "$(mise activate bash)" 2>/dev/null || true
 fi
 
-mkdir -p "${BUNDLE_PATH}" "${BUNDLE_CACHE_PATH}" "${YARN_CACHE_FOLDER}" "${YARN_OFFLINE_MIRROR}"
+mkdir -p "${BUNDLE_PATH}" "${BUNDLE_CACHE_PATH}" "${BUNDLE_USER_HOME}" \
+  "${YARN_CACHE_FOLDER}" "${YARN_OFFLINE_MIRROR}"
 
 # Classic Yarn offline mirror for this tree (absolute under /cache).
 if [[ -f /work/package.json ]]; then
@@ -64,50 +75,90 @@ yarn-offline-mirror-pruning true
 EOF
 fi
 
+bundle_one() {
+  local dir="$1" rel="$2"
+  local path_here="${BUNDLE_PATH}"
+  if [[ "${WARM_ISOLATE_BUNDLE}" == "1" && "${rel}" != "." ]]; then
+    path_here="${BUNDLE_PATH%/}/${rel}"
+    mkdir -p "${path_here}"
+  fi
+  (
+    cd "${dir}"
+    export BUNDLE_PATH="${path_here}"
+    # Prefer satisfied lock; then offline local cache; then network. Retry once
+    # (plugin install races / flaky gem sources are common with bootboot × N apps).
+    if bundle check >/dev/null 2>&1; then
+      echo "   already satisfied (BUNDLE_PATH=${BUNDLE_PATH})"
+    else
+      echo "   bundle install (BUNDLE_PATH=${BUNDLE_PATH})"
+      if ! bundle install --local 2>/dev/null; then
+        bundle install || {
+          echo "   retry: bundle install (${rel})" >&2
+          sleep 1
+          bundle install
+        }
+      fi
+    fi
+    bundle cache --all-platforms 2>/dev/null || true
+  )
+}
+
 # Only project roots (maxdepth 2): /work/Gemfile and /work/<app>/Gemfile.
-# Do not crawl .cache, vendor, or nested gem/source trees.
+# One failure must not abort the whole warm (multi-app + plugins like bootboot).
 echo "== warm: crawling Gemfile (project roots)"
+bundle_failures=()
 while IFS= read -r -d "" gf; do
   dir="$(dirname "${gf}")"
   rel="${dir#/work/}"
   [[ "${rel}" == "/work" || -z "${rel}" ]] && rel="."
   echo "== warm: bundle (${rel})"
-  (
-    cd "${dir}"
-    if bundle check >/dev/null 2>&1; then
-      echo "   already satisfied"
-    else
-      bundle install --local 2>/dev/null || bundle install
-    fi
-    bundle cache --all-platforms 2>/dev/null || true
-  )
+  if ! bundle_one "${dir}" "${rel}"; then
+    echo "   FAILED: bundle (${rel})" >&2
+    bundle_failures+=("${rel}")
+  fi
 done < <(find /work -maxdepth 2 -type f -name Gemfile \
   ! -path "*/.git/*" ! -path "*/.cache/*" ! -path "*/node_modules/*" ! -path "*/vendor/*" \
   -print0 2>/dev/null | sort -z)
 
 echo "== warm: crawling package.json (project roots)"
+yarn_failures=()
 if [[ -f /work/yarn.lock ]] && [[ -f /work/package.json ]]; then
   echo "== warm: yarn install (/work workspaces)"
-  (
+  if ! (
     cd /work
     yarn install --frozen-lockfile 2>/dev/null || yarn install
-  )
+  ); then
+    echo "   FAILED: yarn (/work)" >&2
+    yarn_failures+=(".")
+  fi
 else
   while IFS= read -r -d "" pj; do
     dir="$(dirname "${pj}")"
     [[ -f "${dir}/yarn.lock" ]] || continue
     rel="${dir#/work/}"
     echo "== warm: yarn install (${rel})"
-    (
+    if ! (
       cd "${dir}"
       yarn install --frozen-lockfile 2>/dev/null || yarn install
-    ) || echo "   warning: yarn failed in ${rel}" >&2
+    ); then
+      echo "   FAILED: yarn (${rel})" >&2
+      yarn_failures+=("${rel}")
+    fi
   done < <(find /work -maxdepth 2 -type f -name package.json \
     ! -path "*/.git/*" ! -path "*/.cache/*" ! -path "*/node_modules/*" ! -path "*/vendor/*" \
     -print0 2>/dev/null | sort -z)
 fi
 
 echo "== warm: done"
+if ((${#bundle_failures[@]})); then
+  echo "== warm: bundle failures: ${bundle_failures[*]}" >&2
+fi
+if ((${#yarn_failures[@]})); then
+  echo "== warm: yarn failures: ${yarn_failures[*]}" >&2
+fi
+if ((${#bundle_failures[@]} + ${#yarn_failures[@]} > 0)); then
+  exit 1
+fi
 '
 
 tz="$(host_timezone)"
@@ -115,6 +166,9 @@ docker run --rm \
   -v "${ROOT}:/work:cached" \
   -v "${CACHE_VOLUME}:/cache" \
   -e "CACHE_ROOT=/cache" \
+  -e "BUNDLE_USER_HOME=/cache/bundler" \
+  -e "BUNDLE_CLEAN=false" \
+  -e "WARM_ISOLATE_BUNDLE=${WARM_ISOLATE_BUNDLE:-0}" \
   -e "TZ=${tz}" \
   -e "TERM=${TERM:-xterm-256color}" \
   -w /work \
