@@ -56,6 +56,22 @@ Current app production Dockerfiles use official `ruby:…-slim` multi-stage and 
 Clone: `git clone --recurse-submodules …` or `git submodule update --init --recursive`.  
 App code changes are committed **inside** each app repo, then the parent cluster pin is updated.
 
+### Remotes (github + gitlab + ami)
+
+Standard triple mirror for this org (GitHub canonical, GitLab cloud backup, **ami** LAN bare):
+
+```bash
+git remote add github git@github.com:Ruby-on-Rails-Wizardry/REPO.git   # if needed
+git remote add gitlab git@gitlab.com:ruby-on-rails-wizardry/REPO.git
+git remote add ami    git@ami:Ruby-on-Rails-Wizardry/REPO.git         # exact GH org case
+
+git push github && git push gitlab && git push ami
+# tags: git push github --tags && git push gitlab --tags && git push ami --tags
+```
+
+Create a new ami bare (as root on the LAN host):  
+`ssh root@ami /srv/git/bin/create-repo Ruby-on-Rails-Wizardry/REPO`
+
 ## Rules
 
 1. **One cache:** volume **`cache`** → `/cache` (image ENV for mise/bundle/yarn). Warm with **`bin/warm`**. Do not reintroduce host `.cache` dual paths.
