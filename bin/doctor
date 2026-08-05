@@ -1,6 +1,162 @@
 #!/usr/bin/env bash
-# Managed by cluster-tasks wire — do not edit by hand
+# Managed by cluster-tasks install — standalone copy (no sibling required)
+# Host / Docker / base image / apps / nginx config sanity.
 set -euo pipefail
-export CLUSTER_ROOT="/home/rob/Ruby-on-Rails-Wizardry/docker-mise-cluster"
-export CLUSTER_TASKS_ROOT="/home/rob/Ruby-on-Rails-Wizardry/cluster-tasks"
-exec "${CLUSTER_TASKS_ROOT}/bin/doctor" "$@"
+# shellcheck source=lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+
+print_config
+echo
+printf '=== %s doctor ===\n' "${CLUSTER}"
+
+fail=0
+warn=0
+
+if command -v docker >/dev/null 2>&1; then
+  printf 'OK   docker on PATH\n'
+else
+  printf 'FAIL docker not on PATH\n'
+  fail=1
+fi
+
+if docker info >/dev/null 2>&1; then
+  printf 'OK   docker daemon\n'
+else
+  printf 'FAIL docker daemon not reachable\n'
+  fail=1
+fi
+
+if command -v task >/dev/null 2>&1; then
+  printf 'OK   task on PATH (%s)\n' "$(task --version 2>/dev/null | head -1)"
+else
+  printf 'WARN task not on PATH (mise install from this directory)\n'
+  warn=1
+fi
+
+if command -v mise >/dev/null 2>&1; then
+  printf 'OK   mise on PATH (%s)\n' "$(mise --version 2>/dev/null | head -1)"
+else
+  printf 'WARN mise not on PATH\n'
+  warn=1
+fi
+
+if image_exists; then
+  printf 'OK   base image %s\n' "${IMAGE}"
+else
+  printf 'WARN base image %s missing — cd ../ubuntu-mise && task build\n' "${IMAGE}"
+  warn=1
+fi
+
+if docker volume inspect "${CACHE_VOLUME}" >/dev/null 2>&1; then
+  printf 'OK   volume %s → /cache\n' "${CACHE_VOLUME}"
+else
+  printf 'WARN volume %s missing (created by task warm / bin/compose)\n' "${CACHE_VOLUME}"
+  warn=1
+fi
+
+printf 'INFO compose project = directory name (%s)\n' "${CLUSTER}"
+printf 'INFO host build identity IMAGE_USER=%s DEV_UID=%s DEV_GID=%s (build-time only; not passed at run)\n' \
+  "${IMAGE_USER}" "${DEV_UID}" "${DEV_GID}"
+if [[ -x "${ROOT}/bin/apps" ]]; then
+  while IFS= read -r app; do
+    [[ -n "${app}" ]] || continue
+    if [[ -f "${ROOT}/${app}/Gemfile" ]]; then
+      printf 'OK   app %s (Gemfile present)\n' "${app}"
+    else
+      printf 'WARN app %s missing (git submodule update --init %s)\n' "${app}" "${app}"
+      warn=1
+    fi
+  done < <("${ROOT}/bin/apps" names)
+else
+  printf 'WARN bin/apps not executable\n'
+  warn=1
+fi
+
+if [[ -f "${ROOT}/nginx/nginx.conf" ]]; then
+  printf 'OK   nginx/nginx.conf\n'
+else
+  printf 'FAIL nginx/nginx.conf missing\n'
+  fail=1
+fi
+
+printf 'INFO POSTGRESQL_VERSION=%s (db image + base client parity)\n' "${POSTGRESQL_VERSION:-}"
+if [[ -x "${ROOT}/bin/apps" ]]; then
+  roots="$("${ROOT}/bin/apps" url-roots 2>/dev/null || true)"
+  ports="$("${ROOT}/bin/apps" port-list 2>/dev/null || true)"
+  if [[ -n "${roots}" ]]; then
+    printf 'INFO front door: http://localhost:8080/  (%s)\n' "${roots}"
+  else
+    printf 'INFO front door: http://localhost:8080/\n'
+  fi
+  if [[ -n "${ports}" ]]; then
+    printf 'INFO direct ports: %s\n' "${ports}"
+  fi
+else
+  printf 'INFO front door: http://localhost:8080/\n'
+fi
+
+# --- cluster-tasks / multi-app hygiene ---
+if [[ -f "${ROOT}/bin/lib.sh" ]] && head -5 "${ROOT}/bin/warm" 2>/dev/null | grep -qE 'install — standalone|Managed by cluster-tasks install'; then
+  printf 'OK   cluster-tasks installed standalone (bin/ copies; no sibling required)\n'
+elif head -5 "${ROOT}/bin/warm" 2>/dev/null | grep -q 'Managed by cluster-tasks install'; then
+  printf 'OK   cluster-tasks installed standalone\n'
+elif [[ -f "${ROOT}/task/cluster-tasks.yml" && -f "${ROOT}/bin/lib.sh" ]]; then
+  printf 'OK   cluster-tasks vendored (task/cluster-tasks.yml + bin/lib.sh)\n'
+elif [[ -n "${CLUSTER_TASKS_ROOT:-}" && -d "${CLUSTER_TASKS_ROOT}/bin" ]]; then
+  printf 'OK   CLUSTER_TASKS_ROOT=%s\n' "${CLUSTER_TASKS_ROOT}"
+else
+  sibling="$(cd "${ROOT}/../cluster-tasks" 2>/dev/null && pwd || true)"
+  if [[ -n "${sibling}" && -d "${sibling}/bin" ]]; then
+    printf 'OK   sibling cluster-tasks at %s\n' "${sibling}"
+  else
+    printf 'WARN cluster-tasks not found (bin/install --yes for standalone, or sibling ../cluster-tasks)\n'
+    warn=1
+  fi
+fi
+
+if [[ -f "${ROOT}/config/bundler-flags.yml" ]]; then
+  if grep -qE '^BUNDLE_CLEAN:[[:space:]]*"?false"?' "${ROOT}/config/bundler-flags.yml"; then
+    printf 'OK   BUNDLE_CLEAN=false (multi-app safe)\n'
+  else
+    printf 'WARN BUNDLE_CLEAN not false in config/bundler-flags.yml — sibling apps may lose gems on install\n'
+    warn=1
+  fi
+  if grep -qE '^BUNDLE_NO_PRUNE:[[:space:]]*"?true"?' "${ROOT}/config/bundler-flags.yml"; then
+    printf 'OK   BUNDLE_NO_PRUNE=true (shared cache safe)\n'
+  else
+    printf 'WARN BUNDLE_NO_PRUNE not true — bundle cache may print "Removing outdated gems" and drop sibling .gems\n'
+    warn=1
+  fi
+else
+  printf 'WARN missing config/bundler-flags.yml (wire will seed multi-app flags)\n'
+  warn=1
+fi
+
+# docker-app must be a real file under the project (not a wrapper to a sibling)
+if [[ -f "${ROOT}/bin/docker-app" ]]; then
+  if head -8 "${ROOT}/bin/docker-app" 2>/dev/null | grep -qE 'materialized for in-container|Managed by cluster-tasks install'; then
+    printf 'OK   bin/docker-app is a real script under /work\n'
+  elif head -8 "${ROOT}/bin/docker-app" 2>/dev/null | grep -q 'exec "\${CLUSTER_TASKS_ROOT}/bin/docker-app"'; then
+    printf 'WARN bin/docker-app is a host wrapper — re-run wire, or use install --yes for standalone\n'
+    warn=1
+  else
+    printf 'OK   bin/docker-app present\n'
+  fi
+else
+  printf 'FAIL bin/docker-app missing (required for compose app command)\n'
+  fail=1
+fi
+
+if [[ -f "${ROOT}/.cluster-tasks.env" ]]; then
+  printf 'OK   .cluster-tasks.env present (wire)\n'
+fi
+
+if [[ "${fail}" -ne 0 ]]; then
+  log "doctor: failed"
+  exit 1
+fi
+if [[ "${warn}" -ne 0 ]]; then
+  log "doctor: ready with warnings"
+  exit 0
+fi
+log "doctor: ready"

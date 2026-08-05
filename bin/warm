@@ -1,6 +1,291 @@
 #!/usr/bin/env bash
-# Managed by cluster-tasks wire — do not edit by hand
+# Managed by cluster-tasks install — standalone copy (no sibling required)
+# Warm the shared Docker volume `cache` → /cache for this cluster tree.
+#
+# Runs inside ubuntu-mise:dev so Mac and WSL get the same installs.
+# Crawls /work for Gemfile and package.json (skips node_modules, vendor, .git).
+#
+# Bootboot notes (Shopify dual-boot plugin):
+#   - With BUNDLE_PATH set, plugins install under <app>/.bundle/plugin (per app).
+#   - If Gemfile_next.lock exists, every install dual-resolves the "next" lock.
+#   - Warm defaults: skip next-lock sync; auto-isolate BUNDLE_PATH when bootboot
+#     is detected. Override: WARM_SKIP_NEXT_LOCK=0 / WARM_ISOLATE_BUNDLE=0|1.
+#   - bundle cache --all-platforms only after a real install (or WARM_FORCE_CACHE=1).
+#
+# Usage:
+#   bin/warm
+#   task warm
+#   WARM_ISOLATE_BUNDLE=1 bin/warm
+#   WARM_FORCE_CACHE=1 bin/warm   # refresh /cache/rubygems even when satisfied
+#
+# Prerequisites: image ubuntu-mise:dev (bin/compose ensures it).
 set -euo pipefail
-export CLUSTER_ROOT="/home/rob/Ruby-on-Rails-Wizardry/docker-mise-cluster"
-export CLUSTER_TASKS_ROOT="/home/rob/Ruby-on-Rails-Wizardry/cluster-tasks"
-exec "${CLUSTER_TASKS_ROOT}/bin/warm" "$@"
+# shellcheck source=lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+
+ensure_image
+ensure_cache_volume
+if [[ -x "${ROOT}/bin/env-files" ]]; then
+  "${ROOT}/bin/env-files" write
+elif [[ -n "${CLUSTER_TASKS_ROOT:-}" && -x "${CLUSTER_TASKS_ROOT}/bin/env-files" ]]; then
+  CLUSTER_ROOT="${ROOT}" "${CLUSTER_TASKS_ROOT}/bin/env-files" write
+else
+  write_cache_env_file "${ROOT}/config/cache.env"
+fi
+
+# Each app owns .bundle/config (bootboot writes here). Seed defaults if missing.
+"${ROOT}/bin/ensure-bundle-config"
+
+# Auto-isolate installed gems when any app declares plugin bootboot (unless set).
+if [[ -z "${WARM_ISOLATE_BUNDLE+x}" ]]; then
+  if grep -R -E "plugin[[:space:]]+['\"]bootboot['\"]" \
+      --include='Gemfile' -l "${ROOT}" 2>/dev/null \
+      | grep -vE '/(\.git|node_modules|vendor)/' \
+      | head -1 | grep -q .; then
+    WARM_ISOLATE_BUNDLE=1
+    log "bootboot detected in a Gemfile → WARM_ISOLATE_BUNDLE=1 (set to 0 to share /cache/bundle)"
+  else
+    WARM_ISOLATE_BUNDLE=0
+  fi
+fi
+export WARM_ISOLATE_BUNDLE
+export WARM_SKIP_NEXT_LOCK="${WARM_SKIP_NEXT_LOCK:-1}"
+
+log "warming volume ${CACHE_VOLUME} → /cache (project ${ROOT})"
+
+# Inline script runs as the container command after entrypoint prepares /cache.
+# shellcheck disable=SC2016
+warm_script='
+set -euo pipefail
+export CACHE_ROOT="${CACHE_ROOT:-/cache}"
+export MISE_DATA_DIR="${MISE_DATA_DIR:-/cache/mise}"
+export MISE_CACHE_DIR="${MISE_CACHE_DIR:-/cache/mise-cache}"
+export BUNDLE_PATH="${BUNDLE_PATH:-/cache/bundle}"
+export BUNDLE_CACHE_PATH="${BUNDLE_CACHE_PATH:-/cache/rubygems}"
+# Compact-index / user cache on the volume. App plugins still live under
+# <app>/.bundle/plugin when BUNDLE_PATH is set (Bundler local-plugin mode).
+export BUNDLE_USER_HOME="${BUNDLE_USER_HOME:-/cache/bundler}"
+# Never prune gems missing from the *current* Gemfile when sharing BUNDLE_PATH.
+export BUNDLE_CLEAN="${BUNDLE_CLEAN:-false}"
+# Never prune shared app-cache (.gem files) for sibling apps on `bundle cache`.
+export BUNDLE_NO_PRUNE="${BUNDLE_NO_PRUNE:-true}"
+export YARN_CACHE_FOLDER="${YARN_CACHE_FOLDER:-/cache/yarn-cache}"
+export YARN_OFFLINE_MIRROR="${YARN_OFFLINE_MIRROR:-/cache/yarn}"
+export PATH="/docker/bin:${HOME}/.local/bin:${MISE_DATA_DIR}/shims:${PATH}"
+
+# Shared library gems: published pin in Gemfile; path override for cluster dev.
+# (BUNDLE_LOCAL__* via local-gem-env — no bootboot dual-lock for path vs Nexus.)
+# Off when .local-gems.disabled or LOCAL_GEMS=0|false|off (see bin/local-gem).
+_local_gems_on=1
+case "${LOCAL_GEMS:-}" in
+  0|false|FALSE|off|OFF|no|NO) _local_gems_on=0 ;;
+  1|true|TRUE|on|ON|yes|YES) _local_gems_on=1 ;;
+  *)
+    if [[ -f /work/.local-gems.disabled ]]; then
+      _local_gems_on=0
+    fi
+    ;;
+esac
+if [[ "${_local_gems_on}" -eq 1 && -f /work/bin/local-gem-env ]]; then
+  # shellcheck disable=SC1091
+  eval "$(/work/bin/local-gem-env /work)"
+  echo "== warm: local gem overrides (path checkouts)"
+  /work/bin/local-gem-env /work --print | while IFS= read -r line; do
+    echo "   ${line}"
+  done
+elif [[ "${_local_gems_on}" -eq 0 ]]; then
+  echo "== warm: local gem overrides DISABLED (bin/local-gem enable to turn on)"
+fi
+
+# WARM_ISOLATE_BUNDLE=1 → BUNDLE_PATH=/cache/bundle/<app> (share rubygems + user home)
+WARM_ISOLATE_BUNDLE="${WARM_ISOLATE_BUNDLE:-0}"
+# WARM_SKIP_NEXT_LOCK=1 → move Gemfile_next.lock aside during install (bootboot)
+WARM_SKIP_NEXT_LOCK="${WARM_SKIP_NEXT_LOCK:-1}"
+# WARM_FORCE_CACHE=1 → always bundle cache --all-platforms (even if already satisfied)
+WARM_FORCE_CACHE="${WARM_FORCE_CACHE:-0}"
+
+cd /work
+echo "== warm: CACHE_ROOT=${CACHE_ROOT}"
+echo "== warm: BUNDLE_PATH=${BUNDLE_PATH}"
+echo "== warm: BUNDLE_USER_HOME=${BUNDLE_USER_HOME}"
+echo "== warm: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH}"
+echo "== warm: BUNDLE_CLEAN=${BUNDLE_CLEAN}"
+echo "== warm: BUNDLE_NO_PRUNE=${BUNDLE_NO_PRUNE}"
+echo "== warm: YARN_OFFLINE_MIRROR=${YARN_OFFLINE_MIRROR}"
+echo "== warm: WARM_ISOLATE_BUNDLE=${WARM_ISOLATE_BUNDLE}"
+echo "== warm: WARM_SKIP_NEXT_LOCK=${WARM_SKIP_NEXT_LOCK}"
+echo "== warm: WARM_FORCE_CACHE=${WARM_FORCE_CACHE}"
+
+if command -v mise >/dev/null 2>&1; then
+  mise trust /work 2>/dev/null || true
+  echo "== warm: mise install (root)"
+  mise install
+  eval "$(mise activate bash)" 2>/dev/null || true
+  while IFS= read -r -d "" mt; do
+    dir="$(dirname "${mt}")"
+    echo "== warm: mise install (${dir#/work/})"
+    (cd "${dir}" && mise trust . 2>/dev/null || true && mise install) || true
+  done < <(find /work -type f -name mise.toml \
+    ! -path "*/.git/*" ! -path "*/node_modules/*" ! -path "*/vendor/*" \
+    -print0 2>/dev/null)
+  mise reshim 2>/dev/null || true
+  eval "$(mise activate bash)" 2>/dev/null || true
+fi
+
+mkdir -p "${BUNDLE_PATH}" "${BUNDLE_CACHE_PATH}" "${BUNDLE_USER_HOME}" \
+  "${YARN_CACHE_FOLDER}" "${YARN_OFFLINE_MIRROR}"
+
+# Classic Yarn offline mirror for this tree (absolute under /cache).
+if [[ -f /work/package.json ]]; then
+  cat > /work/.yarnrc <<EOF
+# Generated by bin/warm — offline mirror on the shared cache volume
+yarn-offline-mirror "${YARN_OFFLINE_MIRROR}"
+yarn-offline-mirror-pruning true
+--install.ignore-engines true
+EOF
+fi
+
+bundle_one() {
+  local dir="$1" rel="$2"
+  local path_here="${BUNDLE_PATH}"
+  if [[ "${WARM_ISOLATE_BUNDLE}" == "1" && "${rel}" != "." ]]; then
+    path_here="${BUNDLE_PATH%/}/${rel}"
+    mkdir -p "${path_here}"
+  fi
+  (
+    cd "${dir}"
+    export BUNDLE_PATH="${path_here}"
+
+    # bootboot: after-install-all dual-resolves Gemfile_next.lock when present.
+    # Warm only needs the *current* lock installed; restore next lock afterward.
+    next_aside=""
+    restore_next_lock() {
+      if [[ -n "${next_aside}" && -f "${next_aside}" ]]; then
+        mv -f "${next_aside}" Gemfile_next.lock
+        next_aside=""
+      fi
+    }
+    trap restore_next_lock EXIT
+
+    if [[ "${WARM_SKIP_NEXT_LOCK}" == "1" && -f Gemfile_next.lock ]]; then
+      next_aside="Gemfile_next.lock.warm-aside.$$"
+      mv Gemfile_next.lock "${next_aside}"
+      echo "   aside Gemfile_next.lock (skip bootboot dual-lock sync)"
+    fi
+
+    # 0 = already satisfied (skip cache unless WARM_FORCE_CACHE)
+    # 1 = installed this run (refresh rubygems cache)
+    did_install=0
+
+    if bundle check >/dev/null 2>&1; then
+      echo "   already satisfied (BUNDLE_PATH=${BUNDLE_PATH})"
+    else
+      echo "   bundle install (BUNDLE_PATH=${BUNDLE_PATH})"
+      if ! bundle install --local 2>/dev/null; then
+        if ! bundle install; then
+          # Half-installed local plugin (CommandConflict on bootboot) is common.
+          if [[ -d .bundle/plugin ]]; then
+            echo "   clearing ${rel}/.bundle/plugin and retrying" >&2
+            rm -rf .bundle/plugin
+          fi
+          sleep 1
+          bundle install
+        fi
+      fi
+      did_install=1
+    fi
+
+    if [[ "${did_install}" -eq 1 || "${WARM_FORCE_CACHE}" == "1" ]]; then
+      # BUNDLE_NO_PRUNE=true: do not delete sibling-app gems from shared cache path.
+      echo "   bundle cache --all-platforms → ${BUNDLE_CACHE_PATH} (no-prune)"
+      BUNDLE_NO_PRUNE=true bundle cache --all-platforms 2>/dev/null || true
+    else
+      echo "   skip bundle cache (already satisfied; WARM_FORCE_CACHE=1 to refresh)"
+    fi
+
+    restore_next_lock
+    trap - EXIT
+  )
+}
+
+# Bundle root tooling Gemfile (optional) + each app from config/apps.yml.
+# Do not crawl shared library Gemfiles (wizardry_shared, etc.) as apps.
+echo "== warm: bundling apps from config/apps.yml (+ root if present)"
+bundle_failures=()
+if [[ -f /work/Gemfile ]]; then
+  echo "== warm: bundle (.)"
+  if ! bundle_one /work "."; then
+    echo "   FAILED: bundle (.)" >&2
+    bundle_failures+=(".")
+  fi
+fi
+if [[ -f /work/bin/apps ]]; then
+  while IFS= read -r app_path; do
+    [[ -z "${app_path}" ]] && continue
+    [[ -f "/work/${app_path}/Gemfile" ]] || continue
+    echo "== warm: bundle (${app_path})"
+    if ! bundle_one "/work/${app_path}" "${app_path}"; then
+      echo "   FAILED: bundle (${app_path})" >&2
+      bundle_failures+=("${app_path}")
+    fi
+  done < <(/work/bin/apps paths)
+fi
+
+echo "== warm: crawling package.json (project roots)"
+yarn_failures=()
+if [[ -f /work/yarn.lock ]] && [[ -f /work/package.json ]]; then
+  echo "== warm: yarn install (/work workspaces)"
+  if ! (
+    cd /work
+    yarn install --frozen-lockfile 2>/dev/null || yarn install
+  ); then
+    echo "   FAILED: yarn (/work)" >&2
+    yarn_failures+=(".")
+  fi
+else
+  while IFS= read -r -d "" pj; do
+    dir="$(dirname "${pj}")"
+    [[ -f "${dir}/yarn.lock" ]] || continue
+    rel="${dir#/work/}"
+    echo "== warm: yarn install (${rel})"
+    if ! (
+      cd "${dir}"
+      yarn install --frozen-lockfile 2>/dev/null || yarn install
+    ); then
+      echo "   FAILED: yarn (${rel})" >&2
+      yarn_failures+=("${rel}")
+    fi
+  done < <(find /work -maxdepth 2 -type f -name package.json \
+    ! -path "*/.git/*" ! -path "*/.cache/*" ! -path "*/node_modules/*" ! -path "*/vendor/*" \
+    -print0 2>/dev/null | sort -z)
+fi
+
+echo "== warm: done"
+if ((${#bundle_failures[@]})); then
+  echo "== warm: bundle failures: ${bundle_failures[*]}" >&2
+fi
+if ((${#yarn_failures[@]})); then
+  echo "== warm: yarn failures: ${yarn_failures[*]}" >&2
+fi
+if ((${#bundle_failures[@]} + ${#yarn_failures[@]} > 0)); then
+  exit 1
+fi
+'
+
+tz="$(host_timezone)"
+# Package-cache ENV comes from ubuntu-mise image (user configs + image ENV).
+# Only pass warm-specific knobs and shell/TZ here.
+docker run --rm \
+  -v "${ROOT}:/work:cached" \
+  -v "${CACHE_VOLUME}:/cache" \
+  -e "WARM_ISOLATE_BUNDLE=${WARM_ISOLATE_BUNDLE:-0}" \
+  -e "WARM_SKIP_NEXT_LOCK=${WARM_SKIP_NEXT_LOCK:-1}" \
+  -e "WARM_FORCE_CACHE=${WARM_FORCE_CACHE:-0}" \
+  -e "LOCAL_GEMS=${LOCAL_GEMS:-}" \
+  -e "TZ=${tz}" \
+  -e "TERM=${TERM:-xterm-256color}" \
+  -w /work \
+  "${IMAGE}" \
+  bash -lc "${warm_script}"
+
+log "warm complete (volume ${CACHE_VOLUME})"

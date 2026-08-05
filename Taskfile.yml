@@ -1,11 +1,12 @@
-# Host UX — wired to sibling cluster-tasks (see bin/wire).
-version: "3"
+# Host UX — cluster-tasks (install).
+# App list lives in config/apps.yml — wire/install never overwrites it.
+version: '3'
 
 # BEGIN cluster-tasks wire
-# Sibling cluster-tasks Taskfile (see CLUSTER_TASKS_ROOT / ../cluster-tasks)
+# Vendored cluster-tasks Taskfile (standalone install — task/cluster-tasks.yml)
 includes:
   ct:
-    taskfile: ../cluster-tasks/task/Taskfile.yml
+    taskfile: task/cluster-tasks.yml
     dir: .
     flatten: true
 # END cluster-tasks wire

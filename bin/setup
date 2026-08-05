@@ -1,6 +1,125 @@
 #!/usr/bin/env bash
-# Managed by cluster-tasks wire — do not edit by hand
+# Managed by cluster-tasks install — standalone copy (no sibling required)
+# Bootstrap this cluster after clone (idempotent).
+#
+#   1. Optional: ensure ubuntu-mise:dev (--docker-build)
+#   2. Warm shared volume `cache` (mise, gems, yarn) via bin/warm
+#   3. Optional: prepare app databases on host if Ruby is available
+#
+# Usage:
+#   bin/setup
+#   bin/setup --docker-build
+#   bin/setup --skip-warm
+#   bin/setup --skip-db
+#   bin/setup --reset          # db:reset per app when preparing DBs
 set -euo pipefail
-export CLUSTER_ROOT="/home/rob/Ruby-on-Rails-Wizardry/docker-mise-cluster"
-export CLUSTER_TASKS_ROOT="/home/rob/Ruby-on-Rails-Wizardry/cluster-tasks"
-exec "${CLUSTER_TASKS_ROOT}/bin/setup" "$@"
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+# shellcheck source=lib.sh
+source "${ROOT}/bin/lib.sh"
+
+SKIP_WARM=0
+SKIP_DB=0
+DOCKER_BUILD=0
+RESET_DB=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --skip-warm) SKIP_WARM=1 ;;
+    --skip-db) SKIP_DB=1 ;;
+    --docker-build) DOCKER_BUILD=1 ;;
+    --reset) RESET_DB=1 ;;
+    -h|--help)
+      awk 'NR==1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $arg" >&2
+      echo "Run bin/setup --help for usage." >&2
+      exit 1
+      ;;
+  esac
+done
+
+step() {
+  printf '\n== %s ==\n' "$1"
+}
+
+step "Cluster root"
+echo "$ROOT"
+step "Apps from config/apps.yml"
+"${ROOT}/bin/apps" yaml
+
+step "Per-app .bundle/config (private copies; not a shared symlink)"
+"${ROOT}/bin/ensure-bundle-config"
+
+step "Shared gem local overrides (BUNDLE_LOCAL__* path checkouts)"
+# Off when .local-gems.disabled or LOCAL_GEMS=0 (see bin/local-gem / docs/LOCAL-GEMS.md).
+_local_gems_on=1
+case "${LOCAL_GEMS:-}" in
+  0|false|FALSE|off|OFF|no|NO) _local_gems_on=0 ;;
+  1|true|TRUE|on|ON|yes|YES) _local_gems_on=1 ;;
+  *)
+    if [[ -f "${ROOT}/.local-gems.disabled" ]]; then
+      _local_gems_on=0
+    fi
+    ;;
+esac
+if [[ "${_local_gems_on}" -eq 1 && -x "${ROOT}/bin/local-gem-env" ]]; then
+  # shellcheck disable=SC1090
+  eval "$("${ROOT}/bin/local-gem-env")"
+  "${ROOT}/bin/local-gem-env" --print | while IFS= read -r line; do
+    echo "  ${line}"
+  done
+elif [[ "${_local_gems_on}" -eq 0 ]]; then
+  echo "  DISABLED (bin/local-gem enable to turn on)"
+else
+  echo "  (no local-gem-env)"
+fi
+
+if [[ "$DOCKER_BUILD" -eq 1 ]]; then
+  step "Ensuring base image ${IMAGE}"
+  ensure_image
+fi
+
+if [[ "$SKIP_WARM" -eq 0 ]]; then
+  step "Warming shared cache volume (${CACHE_VOLUME} → /cache)"
+  "${ROOT}/bin/warm"
+else
+  step "Skipping warm (--skip-warm)"
+fi
+
+# Optional host-side db:prepare when Ruby is already available and Postgres is up.
+if [[ "$SKIP_DB" -eq 0 ]] && command -v ruby >/dev/null 2>&1 && command -v bundle >/dev/null 2>&1; then
+  step "Preparing app databases (host Ruby; needs Postgres on localhost:5432)"
+  while IFS= read -r app_path; do
+    [[ -z "${app_path}" ]] && continue
+    app_root="${ROOT}/${app_path}"
+    [[ -x "${app_root}/bin/rails" || -f "${app_root}/bin/rails" ]] || continue
+    (
+      cd "${app_root}"
+      if [[ "$RESET_DB" -eq 1 ]]; then
+        bin/rails db:prepare && bin/rails db:reset
+      else
+        bin/rails db:prepare || echo "warning: db:prepare failed for ${app_path} (start db with: bin/compose up -d db)"
+      fi
+    ) || true
+  done < <("${ROOT}/bin/apps" paths)
+else
+  step "Skipping host db:prepare (use --skip-db, or apps prepare on first container boot)"
+fi
+
+step "Done"
+echo "Next: task up:all"
+if [[ -x "${ROOT}/bin/apps" ]]; then
+  roots="$("${ROOT}/bin/apps" url-roots 2>/dev/null || true)"
+  if [[ -n "${roots}" ]]; then
+    echo "      http://localhost:8080/   (${roots})"
+  else
+    echo "      http://localhost:8080/"
+  fi
+else
+  echo "      http://localhost:8080/"
+fi

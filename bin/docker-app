@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Managed by cluster-tasks wire — do not edit by hand (materialized for in-container /work/bin)
+# Managed by cluster-tasks install — standalone copy (no sibling required)
 # Start a Rails app inside the Ubuntu+mise dev container.
 # Prefer a prior `bin/warm` so gems/yarn/mise are already on the cache volume.
 
@@ -27,12 +27,26 @@ fi
 # Plugins (bootboot, …) on the shared volume when image/runtime did not set them.
 export BUNDLE_USER_HOME="${BUNDLE_USER_HOME:-/cache/bundler}"
 export BUNDLE_CLEAN="${BUNDLE_CLEAN:-false}"
+export BUNDLE_NO_PRUNE="${BUNDLE_NO_PRUNE:-true}"
 mkdir -p "${BUNDLE_USER_HOME}" 2>/dev/null || true
 
 # Shared gems: Gemfile pins published version; local path for cluster checkout.
-if [[ -x "${CLUSTER_ROOT}/bin/local-gem-env" ]]; then
+# Off when .local-gems.disabled or LOCAL_GEMS=0|false|off (see bin/local-gem).
+_local_gems_on=1
+case "${LOCAL_GEMS:-}" in
+  0|false|FALSE|off|OFF|no|NO) _local_gems_on=0 ;;
+  1|true|TRUE|on|ON|yes|YES) _local_gems_on=1 ;;
+  *)
+    if [[ -f "${CLUSTER_ROOT}/.local-gems.disabled" ]]; then
+      _local_gems_on=0
+    fi
+    ;;
+esac
+if [[ "${_local_gems_on}" -eq 1 && -x "${CLUSTER_ROOT}/bin/local-gem-env" ]]; then
   # shellcheck disable=SC1090
   eval "$("${CLUSTER_ROOT}/bin/local-gem-env" /work)"
+elif [[ "${_local_gems_on}" -eq 0 ]]; then
+  echo "== ${APP_NAME}: local gem overrides DISABLED"
 fi
 
 echo "== ${APP_NAME}: BUNDLE_PATH=${BUNDLE_PATH:-/cache/bundle}"

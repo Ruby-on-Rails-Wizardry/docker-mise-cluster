@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Managed by cluster-tasks wire — do not edit by hand (materialized for in-container /work/bin)
+# Managed by cluster-tasks install — standalone copy (no sibling required)
 # Read config/apps.yml and print app / shared-gem fields for other scripts.
 #
 # Usage:

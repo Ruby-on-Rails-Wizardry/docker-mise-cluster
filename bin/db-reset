@@ -1,6 +1,213 @@
 #!/usr/bin/env bash
-# Managed by cluster-tasks wire — do not edit by hand
+# Managed by cluster-tasks install — standalone copy (no sibling required)
+# Reset one or more app databases (drop + create + schema + seed).
+#
+# Reads app names and database= from config/apps.yml. Other apps' DBs are
+# left alone (Postgres is shared; only the named database is reset).
+#
+# Usage:
+#   bin/db-reset APP
+#   bin/db-reset APP1 APP2
+#   bin/db-reset --docker APP      # rails via compose (app service network)
+#   bin/db-reset --host APP        # rails on the host (default when possible)
+#
+# Prerequisites:
+#   - Postgres up (this script starts `db` if needed)
+#   - Host mode: host Ruby/Bundler for the app (bin/setup), port published
+#   - Docker mode: cluster image built (bin/setup --docker-build)
+
 set -euo pipefail
-export CLUSTER_ROOT="/home/rob/Ruby-on-Rails-Wizardry/docker-mise-cluster"
-export CLUSTER_TASKS_ROOT="/home/rob/Ruby-on-Rails-Wizardry/cluster-tasks"
-exec "${CLUSTER_TASKS_ROOT}/bin/db-reset" "$@"
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+MODE="auto" # auto | host | docker
+APPS=()
+
+usage() {
+  awk 'NR==1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --host)
+      MODE="host"
+      shift
+      ;;
+    --docker|--compose)
+      MODE="docker"
+      shift
+      ;;
+    -*)
+      echo "error: unknown option: $1" >&2
+      echo "Run bin/db-reset --help for usage." >&2
+      exit 1
+      ;;
+    *)
+      APPS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ ${#APPS[@]} -eq 0 ]]; then
+  echo "error: specify at least one app name from config/apps.yml" >&2
+  echo "Known apps: $("${ROOT}/bin/apps" names-oneline 2>/dev/null || true)" >&2
+  exit 1
+fi
+
+# Resolve app fields from config/apps.yml (name path database).
+# Prints: name\tpath\tdatabase
+resolve_app() {
+  local want="$1"
+  ruby -r yaml -e '
+    cfg = YAML.load_file(ARGV[0]) || {}
+    want = ARGV[1]
+    app = (cfg["apps"] || []).find { |a| a.fetch("name") == want }
+    abort "error: unknown app #{want.inspect} (not in config/apps.yml)\n" unless app
+    name = app.fetch("name")
+    path = app.fetch("path", name)
+    db = app["database"] || "#{name}_development"
+    puts [name, path, db].join("\t")
+  ' "${ROOT}/config/apps.yml" "${want}"
+}
+
+pg_user="${POSTGRES_USER:-cluster}"
+pg_pass="${POSTGRES_PASSWORD:-cluster}"
+pg_port="${POSTGRES_PUBLISH_PORT:-5432}"
+
+# Load compose-adjacent .env if present (non-fatal).
+if [[ -f "${ROOT}/.env" ]]; then
+  # shellcheck disable=SC1091
+  set -a
+  # shellcheck source=/dev/null
+  source "${ROOT}/.env"
+  set +a
+  pg_user="${POSTGRES_USER:-$pg_user}"
+  pg_pass="${POSTGRES_PASSWORD:-$pg_pass}"
+  pg_port="${POSTGRES_PUBLISH_PORT:-$pg_port}"
+fi
+
+host_database_url() {
+  local db_name="$1"
+  printf 'postgresql://%s:%s@127.0.0.1:%s/%s' \
+    "${pg_user}" "${pg_pass}" "${pg_port}" "${db_name}"
+}
+
+docker_database_url() {
+  local db_name="$1"
+  printf 'postgresql://%s:%s@db:5432/%s' \
+    "${pg_user}" "${pg_pass}" "${db_name}"
+}
+
+ensure_db() {
+  echo "== ensuring Postgres (compose service db) =="
+  "${ROOT}/bin/compose" up -d db
+  local i
+  for i in $(seq 1 30); do
+    if "${ROOT}/bin/compose" exec -T db \
+      pg_isready -U "${pg_user}" -d postgres >/dev/null 2>&1; then
+      echo "== db is ready"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "error: Postgres did not become ready in time" >&2
+  exit 1
+}
+
+can_host_rails() {
+  local app_path="$1"
+  [[ -d "${ROOT}/${app_path}" ]] || return 1
+  [[ -f "${ROOT}/${app_path}/bin/rails" ]] || return 1
+  # Prefer host when bundler can see the app (after bin/setup).
+  (
+    # shellcheck source=bin/cache-env
+    source "${ROOT}/bin/cache-env"
+    cd "${ROOT}/${app_path}"
+    command -v bundle >/dev/null 2>&1 && bundle check >/dev/null 2>&1
+  )
+}
+
+reset_host() {
+  local name="$1" path="$2" db_name="$3"
+  local url
+  url="$(host_database_url "${db_name}")"
+
+  echo "== ${name}: rails db:reset (host) DATABASE_URL=…/${db_name}"
+  # shellcheck source=bin/cache-env
+  source "${ROOT}/bin/cache-env"
+  (
+    cd "${ROOT}/${path}"
+    export DATABASE_URL="${url}"
+    export RAILS_ENV="${RAILS_ENV:-development}"
+    # db:reset is destructive; development only unless forced.
+    if [[ "${RAILS_ENV}" != "development" && "${RAILS_ENV}" != "test" ]]; then
+      export DISABLE_DATABASE_ENVIRONMENT_CHECK=1
+    fi
+    if bundle check >/dev/null 2>&1; then
+      bundle exec rails db:reset
+    else
+      bin/rails db:reset
+    fi
+  )
+}
+
+reset_docker() {
+  local name="$1" path="$2" db_name="$3"
+  local url
+  url="$(docker_database_url "${db_name}")"
+
+  echo "== ${name}: rails db:reset (docker service ${name}) DATABASE_URL=…@db/${db_name}"
+  # Use the app service definition (same image/env as compose) without starting the web server.
+  # --no-deps: db already ensured; avoid pulling nginx/redis for a DB-only task.
+  "${ROOT}/bin/compose" run --rm --no-deps \
+    -e "DATABASE_URL=${url}" \
+    -e "RAILS_ENV=${RAILS_ENV:-development}" \
+    -w "/work/${path}" \
+    "${name}" \
+    bash -lc '
+      set -euo pipefail
+      if command -v mise >/dev/null 2>&1; then
+        mise trust /work 2>/dev/null || true
+        mise trust . 2>/dev/null || true
+        eval "$(mise activate bash)" 2>/dev/null || true
+        mise install >/dev/null
+        mise reshim 2>/dev/null || true
+        eval "$(mise activate bash)" 2>/dev/null || true
+      fi
+      if bundle check >/dev/null 2>&1; then
+        exec bundle exec rails db:reset
+      fi
+      exec bin/rails db:reset
+    '
+}
+
+ensure_db
+
+for app in "${APPS[@]}"; do
+  IFS=$'\t' read -r name path db_name < <(resolve_app "${app}")
+  mode="${MODE}"
+  if [[ "${mode}" == "auto" ]]; then
+    if can_host_rails "${path}"; then
+      mode="host"
+    else
+      mode="docker"
+      echo "== ${name}: host rails not ready; using docker"
+    fi
+  fi
+
+  case "${mode}" in
+    host) reset_host "${name}" "${path}" "${db_name}" ;;
+    docker) reset_docker "${name}" "${path}" "${db_name}" ;;
+    *)
+      echo "error: internal mode=${mode}" >&2
+      exit 1
+      ;;
+  esac
+  echo "== ${name}: database reset complete (${db_name})"
+done

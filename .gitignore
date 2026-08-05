@@ -72,3 +72,7 @@ spec/examples.txt
 
 # cluster-tasks wire
 .cluster-tasks.env
+.local-gems.disabled
+config/cache.env
+compose.secrets.yml
+.*.env

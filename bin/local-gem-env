@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Managed by cluster-tasks wire — do not edit by hand (materialized for in-container /work/bin)
+# Managed by cluster-tasks install — standalone copy (no sibling required)
 # Emit `export BUNDLE_LOCAL__GEM=path` for shared_gems in config/apps.yml.
 #
 # This is the clean path-vs-published pattern (no bootboot):

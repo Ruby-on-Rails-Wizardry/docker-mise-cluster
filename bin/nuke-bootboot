@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+# Managed by cluster-tasks install — standalone copy (no sibling required)
+# Remove installed Shopify bootboot artifacts from a multi-app cluster.
+#
+# Bootboot is for dual-lock (Gemfile.lock / Gemfile_next.lock). Shared-gem path
+# overrides use bin/local-gem-env instead — leftover plugins and isolate dirs
+# only add noise / CommandConflict retries.
+#
+# What this removes (installed artifacts only):
+#   - <app>/.bundle/plugin          (local plugins when BUNDLE_PATH is set)
+#   - Gemfile_next.lock.warm-aside.* (warm temp leftovers)
+#   - /cache/bundle/<app>           (WARM_ISOLATE_BUNDLE isolate dirs)
+#   - bootboot gem under /cache/bundle (shared path)
+#   - /cache/bundler/plugin         (shared plugin home if used)
+#
+# Does NOT edit Gemfiles or delete intentional Gemfile_next.lock by default.
+# Optional:
+#   --locks   also delete Gemfile_next.lock under apps (and root)
+#   --dry-run report only (default unless -y / CONFIRM=1)
+#
+# Usage:
+#   bin/nuke-bootboot              # dry-run report
+#   bin/nuke-bootboot -y           # delete
+#   bin/nuke-bootboot --locks -y
+#   task bootboot:nuke -- -y
+set -euo pipefail
+# shellcheck source=lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+
+DRY_RUN=1
+DO_LOCKS=0
+
+usage() {
+  awk 'NR==1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+}
+
+for arg in "$@"; do
+  case "${arg}" in
+    -y|--yes)
+      DRY_RUN=0
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      ;;
+    --locks)
+      DO_LOCKS=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "unknown option: ${arg}" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "${CONFIRM:-}" == "1" ]]; then
+  DRY_RUN=0
+fi
+
+log() { printf 'nuke-bootboot: %s\n' "$*"; }
+rm_path() {
+  local path=$1
+  if [[ ! -e "${path}" && ! -L "${path}" ]]; then
+    return 0
+  fi
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "would remove ${path}"
+  else
+    log "removing ${path}"
+    rm -rf "${path}"
+  fi
+}
+
+# Collect app paths (relative) + optional root "."
+mapfile -t APP_PATHS < <(
+  if ab="$(apps_bin 2>/dev/null)"; then
+    "${ab}" paths
+  fi
+)
+# Always consider cluster root for tooling Gemfile / plugins
+DIRS=(".")
+for p in "${APP_PATHS[@]:-}"; do
+  [[ -n "${p}" ]] || continue
+  DIRS+=("${p}")
+done
+
+log "cluster root ${ROOT}"
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+  log "dry-run (pass -y or CONFIRM=1 to delete)"
+else
+  log "deleting installed bootboot artifacts"
+fi
+
+# --- host tree (bind-mounted as /work) ---------------------------------------
+declared=0
+for rel in "${DIRS[@]}"; do
+  dir="${ROOT}/${rel}"
+  [[ -d "${dir}" ]] || continue
+
+  if [[ -f "${dir}/Gemfile" ]] && grep -qE "plugin[[:space:]]+['\"]bootboot['\"]" "${dir}/Gemfile" 2>/dev/null; then
+    log "note: ${rel}/Gemfile still declares plugin \"bootboot\" (not removed — edit Gemfile yourself)"
+    declared=1
+  fi
+
+  rm_path "${dir}/.bundle/plugin"
+
+  # warm leftovers
+  shopt -s nullglob
+  for f in "${dir}"/Gemfile_next.lock.warm-aside.*; do
+    rm_path "${f}"
+  done
+  shopt -u nullglob
+
+  if [[ "${DO_LOCKS}" -eq 1 ]]; then
+    rm_path "${dir}/Gemfile_next.lock"
+  elif [[ -f "${dir}/Gemfile_next.lock" ]]; then
+    log "keep ${rel}/Gemfile_next.lock (pass --locks to delete)"
+  fi
+done
+
+# --- shared cache volume -----------------------------------------------------
+if docker volume inspect "${CACHE_VOLUME}" >/dev/null 2>&1; then
+  require_docker
+  ensure_image
+
+  app_list="$(printf '%s\n' "${APP_PATHS[@]:-}")"
+  log "scanning volume ${CACHE_VOLUME} → /cache"
+  docker run --rm \
+    -v "${CACHE_VOLUME}:/cache" \
+    -e BUNDLE_PATH=/cache/bundle \
+    -e BUNDLE_USER_HOME=/cache/bundler \
+    -e NUKE_DRY_RUN="${DRY_RUN}" \
+    -e NUKE_APP_PATHS="${app_list}" \
+    "${IMAGE}" \
+    bash -lc '
+set -euo pipefail
+log() { printf "nuke-bootboot: %s\n" "$*"; }
+rm_path() {
+  local path=$1
+  if [[ ! -e "${path}" && ! -L "${path}" ]]; then
+    return 0
+  fi
+  if [[ "${NUKE_DRY_RUN}" == "1" ]]; then
+    log "would remove ${path}"
+  else
+    log "removing ${path}"
+    rm -rf "${path}"
+  fi
+}
+
+BUNDLE_ROOT="${BUNDLE_PATH:-/cache/bundle}"
+USER_HOME="${BUNDLE_USER_HOME:-/cache/bundler}"
+
+# Shared plugin home (if bootboot ever installed without local .bundle)
+rm_path "${USER_HOME}/plugin"
+
+# Isolated per-app BUNDLE_PATH dirs from WARM_ISOLATE_BUNDLE=1
+if [[ -d "${BUNDLE_ROOT}" && -n "${NUKE_APP_PATHS:-}" ]]; then
+  while IFS= read -r app; do
+    [[ -n "${app}" ]] || continue
+    if [[ -d "${BUNDLE_ROOT}/${app}" ]]; then
+      rm_path "${BUNDLE_ROOT}/${app}"
+    fi
+  done <<< "${NUKE_APP_PATHS}"
+fi
+
+# bootboot gem trees under shared BUNDLE_PATH (any Ruby ABI)
+if [[ -d "${BUNDLE_ROOT}" ]]; then
+  while IFS= read -r -d "" p; do
+    rm_path "${p}"
+  done < <(find "${BUNDLE_ROOT}" \( -type d -name "bootboot-*" -o -type d -name "bootboot" \) -print0 2>/dev/null || true)
+  while IFS= read -r -d "" p; do
+    rm_path "${p}"
+  done < <(find "${BUNDLE_ROOT}" -type f \( -name "bootboot-*.gemspec" -o -name "bootboot.gemspec" \) -print0 2>/dev/null || true)
+fi
+'
+else
+  log "volume ${CACHE_VOLUME} not present — skip cache cleanup"
+fi
+
+log "done"
+if [[ "${declared}" -eq 1 ]]; then
+  log "tip: remove plugin \"bootboot\" from Gemfiles, drop Gemfile_next.lock, then task warm"
+fi
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+  log "re-run with -y to apply"
+fi

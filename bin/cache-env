@@ -1,6 +1,81 @@
 #!/usr/bin/env bash
-# Managed by cluster-tasks wire — do not edit by hand
+# Managed by cluster-tasks install — standalone copy (no sibling required)
+# Export package-cache paths under CACHE_ROOT (default /cache — the Docker volume).
+# Image ENV already sets these; this is for host shells and generating compose env.
+#
+#   source bin/cache-env
+#   bin/cache-env                 # print
+#   bin/cache-env --write         # write config/cache.env stub (no package ENV)
+#   bin/cache-env --write-yarnrc  # classic Yarn offline-mirror → /cache/yarn
+#   task cache:env                # print via Task
 set -euo pipefail
-export CLUSTER_ROOT="/home/rob/Ruby-on-Rails-Wizardry/docker-mise-cluster"
-export CLUSTER_TASKS_ROOT="/home/rob/Ruby-on-Rails-Wizardry/cluster-tasks"
-exec "${CLUSTER_TASKS_ROOT}/bin/cache-env" "$@"
+
+# When executed (not sourced), use lib for ROOT + write helper.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  # shellcheck source=lib.sh
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+fi
+
+_cache_env_main() {
+  export CACHE_ROOT="${CACHE_ROOT:-/cache}"
+  export BUNDLE_PATH="${BUNDLE_PATH:-${CACHE_ROOT}/bundle}"
+  export BUNDLE_CACHE_PATH="${BUNDLE_CACHE_PATH:-${CACHE_ROOT}/rubygems}"
+  # Shared plugin home (bootboot, etc.) on the volume — not ephemeral ~/.bundle.
+  export BUNDLE_USER_HOME="${BUNDLE_USER_HOME:-${CACHE_ROOT}/bundler}"
+  export BUNDLE_CLEAN="${BUNDLE_CLEAN:-false}"
+  export BUNDLE_NO_PRUNE="${BUNDLE_NO_PRUNE:-true}"
+  export MISE_DATA_DIR="${MISE_DATA_DIR:-${CACHE_ROOT}/mise}"
+  export MISE_CACHE_DIR="${MISE_CACHE_DIR:-${CACHE_ROOT}/mise-cache}"
+  export YARN_CACHE_FOLDER="${YARN_CACHE_FOLDER:-${CACHE_ROOT}/yarn-cache}"
+  export YARN_OFFLINE_MIRROR="${YARN_OFFLINE_MIRROR:-${CACHE_ROOT}/yarn}"
+  export YARN_GLOBAL_FOLDER="${YARN_GLOBAL_FOLDER:-${CACHE_ROOT}/yarn-global}"
+  export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-${CACHE_ROOT}/npm}"
+  export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${CACHE_ROOT}/pip}"
+  export UV_CACHE_DIR="${UV_CACHE_DIR:-${CACHE_ROOT}/uv}"
+  export POETRY_CACHE_DIR="${POETRY_CACHE_DIR:-${CACHE_ROOT}/poetry}"
+}
+
+_cache_env_write_yarnrc() {
+  local root="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+  _cache_env_main
+  cat > "${root}/.yarnrc" <<EOF
+# Classic Yarn 1.x — offline mirror on the shared cache volume (/cache/yarn).
+# Prefer: task warm (writes this from inside the container with absolute path).
+yarn-offline-mirror "${YARN_OFFLINE_MIRROR}"
+yarn-offline-mirror-pruning true
+--install.ignore-engines true
+EOF
+}
+
+_cache_env_main || return $?
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  case "${1:-}" in
+    --write)
+      write_cache_env_file "${ROOT}/config/cache.env"
+      ;;
+    --write-yarnrc)
+      _cache_env_write_yarnrc
+      echo "Wrote .yarnrc (offline-mirror → ${YARN_OFFLINE_MIRROR})"
+      ;;
+    "")
+      printf 'CACHE_ROOT=%s\nBUNDLE_PATH=%s\nBUNDLE_CACHE_PATH=%s\nBUNDLE_USER_HOME=%s\nBUNDLE_CLEAN=%s\nBUNDLE_NO_PRUNE=%s\nMISE_DATA_DIR=%s\nMISE_CACHE_DIR=%s\nYARN_CACHE_FOLDER=%s\nYARN_OFFLINE_MIRROR=%s\n' \
+        "${CACHE_ROOT}" "${BUNDLE_PATH}" "${BUNDLE_CACHE_PATH}" "${BUNDLE_USER_HOME}" "${BUNDLE_CLEAN}" \
+        "${BUNDLE_NO_PRUNE}" "${MISE_DATA_DIR}" "${MISE_CACHE_DIR}" \
+        "${YARN_CACHE_FOLDER}" "${YARN_OFFLINE_MIRROR}"
+      ;;
+    -h|--help)
+      cat <<'EOF'
+Usage:
+  source bin/cache-env
+  bin/cache-env
+  bin/cache-env --write           # config/cache.env stub (image owns /cache layout)
+  bin/cache-env --write-yarnrc
+EOF
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+  esac
+fi

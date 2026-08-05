@@ -4,11 +4,13 @@
 # symlink (bootboot and bundle config set --local must not cross apps).
 #
 # Install paths stay in ENV / image: BUNDLE_PATH, BUNDLE_CACHE_PATH,
-# BUNDLE_USER_HOME (plugins on /cache/bundler). Keep BUNDLE_CLEAN false when
-# apps share BUNDLE_PATH.
+# BUNDLE_USER_HOME (plugins on /cache/bundler). Multi-app shared path:
+#   BUNDLE_CLEAN false  — do not prune installed gems for sibling apps
+#   BUNDLE_NO_PRUNE true — do not prune shared cache on `bundle cache`
 BUNDLE_CACHE_ALL: "true"
 BUNDLE_CACHE_ALL_PLATFORMS: "true"
 BUNDLE_DISABLE_SHARED_GEMS: "true"
 BUNDLE_CLEAN: "false"
+BUNDLE_NO_PRUNE: "true"
 BUNDLE_JOBS: "4"
 BUNDLE_RETRY: "3"
