@@ -39,7 +39,7 @@ manifest = if manifest_path.file?
 else
   {
     "shared" => ["config/shared.env"],
-    "shared_secrets" => [],
+    "shared_secrets" => [".common.env"],
     "app_secrets" => {},
     "options" => {},
   }
@@ -47,7 +47,7 @@ end
 
 opts = manifest["options"] || {}
 shared = Array(manifest["shared"] || ["config/shared.env"])
-shared_secrets = Array(manifest["shared_secrets"] || [])
+shared_secrets = Array(manifest["shared_secrets"].nil? ? [".common.env"] : manifest["shared_secrets"])
 app_secrets = manifest["app_secrets"] || {}
 secrets_compose = opts["secrets_compose"] || "compose.secrets.yml"
 require_secrets = !!opts["require_secrets"]
@@ -71,13 +71,13 @@ when "status"
   puts "secrets_compose: #{secrets_compose}"
   puts "require_secrets: #{require_secrets}"
   puts
-  puts "shared (non-secret — list on compose x-app env_file):"
+  puts "shared non-secrets (compose x-app env_file — commit these):"
   shared.each do |p|
     flag = exists?(root, p) ? "ok" : "MISSING"
     puts "  [#{flag}] #{p}"
   end
   puts
-  puts "shared_secrets (vault — every app, via compose.secrets.yml):"
+  puts "shared secrets (.common.env etc — every app via compose.secrets.yml; gitignore):"
   if shared_secrets.empty?
     puts "  (none)"
   else
@@ -184,7 +184,8 @@ EOF
         cat >"${MANIFEST}" <<'EOF'
 shared:
   - config/shared.env
-shared_secrets: []
+shared_secrets:
+  - .common.env
 app_secrets: {}
 options:
   require_secrets: false

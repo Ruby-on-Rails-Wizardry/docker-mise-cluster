@@ -76,3 +76,5 @@ spec/examples.txt
 config/cache.env
 compose.secrets.yml
 .*.env
+config/compose.env
+.common.env

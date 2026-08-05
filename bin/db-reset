@@ -80,17 +80,28 @@ pg_user="${POSTGRES_USER:-cluster}"
 pg_pass="${POSTGRES_PASSWORD:-cluster}"
 pg_port="${POSTGRES_PUBLISH_PORT:-5432}"
 
-# Load compose-adjacent .env if present (non-fatal).
-if [[ -f "${ROOT}/.env" ]]; then
-  # shellcheck disable=SC1091
+# Host env layers (docs/ENV.md). Do not manage/overwrite .env.
+# Later files override earlier for the same key when both set values.
+#   config/compose.env — compose interpolation defaults (POSTGRES_*, …)
+#   config/shared.env  — shared non-secrets
+#   .common.env        — shared secrets (vault)
+#   .env               — optional user override only (we never write it)
+load_env_file() {
+  local f="$1"
+  [[ -f "$f" ]] || return 0
+  # shellcheck disable=SC1090
   set -a
   # shellcheck source=/dev/null
-  source "${ROOT}/.env"
+  source "$f"
   set +a
-  pg_user="${POSTGRES_USER:-$pg_user}"
-  pg_pass="${POSTGRES_PASSWORD:-$pg_pass}"
-  pg_port="${POSTGRES_PUBLISH_PORT:-$pg_port}"
-fi
+}
+load_env_file "${ROOT}/config/compose.env"
+load_env_file "${ROOT}/config/shared.env"
+load_env_file "${ROOT}/.common.env"
+load_env_file "${ROOT}/.env"
+pg_user="${POSTGRES_USER:-$pg_user}"
+pg_pass="${POSTGRES_PASSWORD:-$pg_pass}"
+pg_port="${POSTGRES_PUBLISH_PORT:-$pg_port}"
 
 host_database_url() {
   local db_name="$1"

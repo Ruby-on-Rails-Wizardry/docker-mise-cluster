@@ -435,11 +435,19 @@ if [[ -f "${CONSUMER}/.gitignore" ]]; then
     printf 'config/cache.env\n' >>"${CONSUMER}/.gitignore"
     log "appended config/cache.env to .gitignore"
   fi
+  if ! grep -q 'config/compose\.env' "${CONSUMER}/.gitignore" 2>/dev/null; then
+    printf 'config/compose.env\n' >>"${CONSUMER}/.gitignore"
+    log "appended config/compose.env to .gitignore"
+  fi
   if ! grep -q '^compose\.secrets\.yml$' "${CONSUMER}/.gitignore" 2>/dev/null; then
     printf 'compose.secrets.yml\n' >>"${CONSUMER}/.gitignore"
     log "appended compose.secrets.yml to .gitignore"
   fi
-  # Vault-style secret env files
+  # Shared + per-app secrets (vault). Leave user .env alone (not managed by us).
+  if ! grep -q '^\.common\.env$' "${CONSUMER}/.gitignore" 2>/dev/null; then
+    printf '.common.env\n' >>"${CONSUMER}/.gitignore"
+    log "appended .common.env to .gitignore"
+  fi
   if ! grep -q '^\.\*\.env$' "${CONSUMER}/.gitignore" 2>/dev/null && ! grep -q '^\.\*\.env' "${CONSUMER}/.gitignore" 2>/dev/null; then
     printf '.*.env\n' >>"${CONSUMER}/.gitignore"
     log "appended .*.env to .gitignore"
