@@ -108,6 +108,11 @@ export DEV_GID="${DEV_GID:-$(id -g)}"
 export IMAGE_USER="${IMAGE_USER:-${USER}}"
 PROJECT="${PROJECT:-${ROOT}}"
 CACHE_ROOT="${CACHE_ROOT:-/cache}"
+# Container path for project bind-mount (default /work). Override via WORK_MOUNT
+# or WORKSPACE (or .mise.env). Must match compose volumes / working_dir.
+WORK_MOUNT="${WORK_MOUNT:-${WORKSPACE:-/work}}"
+export WORK_MOUNT
+export WORKSPACE="${WORKSPACE:-${WORK_MOUNT}}"
 : "${POSTGRESQL_VERSION:=}"
 REDIS_VERSION="${REDIS_VERSION:-8}"
 
@@ -220,6 +225,7 @@ CLUSTER=${CLUSTER}
 FLAVOR_BASE=${FLAVOR_BASE}
 IMAGE=${IMAGE}
 CACHE_VOLUME=${CACHE_VOLUME}
+WORK_MOUNT=${WORK_MOUNT}
 IMAGE_USER=${IMAGE_USER}
 DEV_UID=${DEV_UID}
 DEV_GID=${DEV_GID}

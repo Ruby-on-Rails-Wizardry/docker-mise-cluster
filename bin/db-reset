@@ -165,15 +165,19 @@ reset_docker() {
   echo "== ${name}: rails db:reset (docker service ${name}) DATABASE_URL=…@db/${db_name}"
   # Use the app service definition (same image/env as compose) without starting the web server.
   # --no-deps: db already ensured; avoid pulling nginx/redis for a DB-only task.
+  local wm="${WORK_MOUNT:-/work}"
   "${ROOT}/bin/compose" run --rm --no-deps \
     -e "DATABASE_URL=${url}" \
     -e "RAILS_ENV=${RAILS_ENV:-development}" \
-    -w "/work/${path}" \
+    -e "WORK_MOUNT=${wm}" \
+    -e "WORKSPACE=${wm}" \
+    -w "${wm}/${path}" \
     "${name}" \
     bash -lc '
       set -euo pipefail
+      wm="${WORK_MOUNT:-/work}"
       if command -v mise >/dev/null 2>&1; then
-        mise trust /work 2>/dev/null || true
+        mise trust "${wm}" 2>/dev/null || true
         mise trust . 2>/dev/null || true
         eval "$(mise activate bash)" 2>/dev/null || true
         mise install >/dev/null
