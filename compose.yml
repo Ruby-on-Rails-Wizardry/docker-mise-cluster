@@ -5,7 +5,12 @@
 # Build nginx once:  bin/compose build nginx
 # Run:               task up:all | task up -- app1
 #
-# Volume `cache` → /cache (mise/gems/yarn via image ENV). Project at /work.
+# Volume `cache` → /cache (mise/gems/yarn). Project at /work.
+# Package cache paths: ubuntu-mise image user configs + image ENV (not compose).
+#   See ubuntu-mise docs/runtime-env-not-required.md
+# Env layers (cluster-tasks docs/ENV.md):
+#   config/shared.env   — committed non-secrets (RAILS_ENV, …)
+#   compose.secrets.yml — vault .*.env (bin/env-files; optional)
 # Compose project name = directory basename. Topology only — no healthchecks;
 # bin/docker-app waits for Postgres; Rails db:prepare creates DBs.
 
@@ -16,10 +21,13 @@ x-db-env: &db-env
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cluster}
 
 # Shared by every Rails app (and optional `dev` shell).
+# App non-secrets only — package caches from image; vault via compose.secrets.yml.
 x-app: &app
   image: ${IMAGE:-ubuntu-mise:dev}
   pull_policy: never
   working_dir: /work
+  env_file:
+    - config/shared.env
   environment:
     <<: *db-env
   volumes:

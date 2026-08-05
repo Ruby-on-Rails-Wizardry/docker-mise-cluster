@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **cluster-tasks phase 1:** host UX is fully driven by `config/apps.yml` — no
   hard-coded demo app names in `bin/*` or Taskfile; `up:all` uses
   `bin/apps names-oneline`; per-app Task is `task app -- NAME …`
+- Compose **no longer** `env_file`s package-cache vars (`BUNDLE_*` / `YARN_*` / …);
+  relies on **ubuntu-mise** user configs + image. `config/shared.env` only for app non-secrets
 
 ### Fixed
 
