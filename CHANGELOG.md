@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [0.11.0] - 2026-08-06
+
+### Changed
+
+- Install **cluster-tasks v0.5.0**: reheat via `compose up` + `PREPARE_ONLY` (service
+  names, not `*-run-*`); warm uses compose services; shared `COMPOSE_PROJECT_NAME`
+
 ## [0.10.1] - 2026-08-06
 
 ### Fixed
@@ -252,7 +259,8 @@ First tagged release of the multi-app Docker + mise cluster template.
 - Docker image build: copy root `Gemfile` so `mise install` installs Ruby (not only Node/Yarn)
 - Untrusted `fred/mise.toml` / `george/mise.toml` under the host bind mount
 
-[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.2...v0.9.0

@@ -62,7 +62,10 @@ EOF
 } >"${ENV_FILE}"
 log "wrote ${ENV_FILE} (IMAGE=${IMAGE} WORK_MOUNT=${WORK_MOUNT:-/work}; left .env untouched)"
 
+# -p pins the Docker Desktop project tree (e.g. wf → db, redis, apps).
+# Must match for reheat one-offs and long-running `up` or containers look "random".
 compose_args=(
+  -p "${COMPOSE_PROJECT_NAME}"
   --project-directory "${ROOT}"
   --env-file "${ENV_FILE}"
 )
@@ -79,6 +82,16 @@ else
     compose_args+=(-f "${ROOT}/compose.secrets.yml")
     log "including compose.secrets.yml"
   fi
+fi
+
+# Extra compose files (colon-separated), e.g. reheat overlay for PREPARE_ONLY.
+if [[ -n "${COMPOSE_ADD_FILES:-}" ]]; then
+  IFS=':' read -r -a _compose_add <<<"${COMPOSE_ADD_FILES}"
+  for _f in "${_compose_add[@]}"; do
+    [[ -n "${_f}" && -f "${_f}" ]] || die "COMPOSE_ADD_FILES: missing ${_f}"
+    compose_args+=(-f "${_f}")
+  done
+  unset _f _compose_add
 fi
 
 # shellcheck disable=SC2086

@@ -33,6 +33,15 @@ echo "== ${APP_NAME}: docker-prepare"
 # Run as a process (not source) so set -e / cwd stay predictable.
 "${PREPARE}"
 
+# reheat / prepare-only: finish without starting the server. Container keeps the
+# normal service name (e.g. ross), not a compose-run one-off (ross-run-…).
+case "${PREPARE_ONLY:-0}" in
+  1|true|TRUE|yes|YES|on|ON)
+    echo "== ${APP_NAME}: PREPARE_ONLY — done (no server); results on /cache + bind mount + db"
+    exit 0
+    ;;
+esac
+
 # Long-running process: foreman when a Procfile is available, else rails server.
 PROCFILE="${PROCFILE:-}"
 if [[ -z "${PROCFILE}" ]]; then

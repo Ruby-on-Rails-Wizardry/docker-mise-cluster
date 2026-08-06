@@ -18,8 +18,9 @@
 #   task warm
 #   WARM_ISOLATE_BUNDLE=1 bin/warm
 #   WARM_FORCE_CACHE=1 bin/warm   # refresh /cache/rubygems even when satisfied
+#   WARM_REHEAT=0 bin/warm        # skip sequential docker-prepare (default: run reheat)
 #
-# Prerequisites: image ubuntu-mise:dev (bin/compose ensures it).
+# Prerequisites: image from IMAGE / .mise.env (default ubuntu-mise:dev).
 set -euo pipefail
 # shellcheck source=lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -52,7 +53,7 @@ fi
 export WARM_ISOLATE_BUNDLE
 export WARM_SKIP_NEXT_LOCK="${WARM_SKIP_NEXT_LOCK:-1}"
 
-log "warming volume ${CACHE_VOLUME} → /cache (project ${ROOT})"
+log "warming volume ${CACHE_VOLUME} → /cache (compose project=${COMPOSE_PROJECT_NAME})"
 
 # Inline script runs as the container command after entrypoint prepares /cache.
 # Package-cache paths (BUNDLE_*, YARN_*, MISE_*, …) come from ubuntu-mise image
@@ -269,29 +270,59 @@ fi
 '
 
 tz="$(host_timezone)"
-# Package-cache ENV: ubuntu-mise image only (see docs/runtime-env-not-required.md).
-# Pass WORK_MOUNT when non-default so scripts + mise trust follow the bind path.
-docker_run_env=(
+# Use a Compose service definition (image/volumes/env) — not a bare docker run.
+# Prefer profile "dev" if declared; else first app service (-w cluster root).
+warm_svc=""
+warm_compose_extra=()
+compose_file="${ROOT}/compose.yml"
+[[ -f "${compose_file}" ]] || compose_file="${ROOT}/compose.yaml"
+if [[ -f "${compose_file}" ]] && grep -qE '^[[:space:]]*dev:[[:space:]]*$' "${compose_file}"; then
+  warm_svc="dev"
+  warm_compose_extra=(--profile dev)
+elif [[ -x "${ROOT}/bin/apps" ]]; then
+  warm_svc="$("${ROOT}/bin/apps" names 2>/dev/null | head -1 || true)"
+fi
+[[ -n "${warm_svc}" ]] || die "no compose service for warm (need dev: or an app in config/apps.yml)"
+
+compose_run_env=(
   -e "WARM_ISOLATE_BUNDLE=${WARM_ISOLATE_BUNDLE:-0}"
   -e "WARM_SKIP_NEXT_LOCK=${WARM_SKIP_NEXT_LOCK:-1}"
   -e "WARM_FORCE_CACHE=${WARM_FORCE_CACHE:-0}"
   -e "LOCAL_GEMS=${LOCAL_GEMS:-}"
   -e "TZ=${tz}"
   -e "TERM=${TERM:-xterm-256color}"
+  -e "WORK_MOUNT=${WORK_MOUNT}"
+  -e "WORKSPACE=${WORK_MOUNT}"
 )
 if [[ "${WORK_MOUNT}" != "/work" ]]; then
-  docker_run_env+=(
-    -e "WORK_MOUNT=${WORK_MOUNT}"
-    -e "WORKSPACE=${WORK_MOUNT}"
-    -e "MISE_TRUSTED_CONFIG_PATHS=${WORK_MOUNT}"
-  )
+  compose_run_env+=(-e "MISE_TRUSTED_CONFIG_PATHS=${WORK_MOUNT}")
 fi
-docker run --rm \
-  -v "${ROOT}:${WORK_MOUNT}:cached" \
-  -v "${CACHE_VOLUME}:/cache" \
-  "${docker_run_env[@]}" \
+
+log "warm: compose run --no-deps ${warm_svc} (service definition; project=${COMPOSE_PROJECT_NAME})"
+# -w cluster root so warm_script can crawl all apps; image/env/volumes from service.
+if ! "${ROOT}/bin/compose" "${warm_compose_extra[@]}" run --rm --no-deps -T \
   -w "${WORK_MOUNT}" \
-  "${IMAGE}" \
-  bash -lc "${warm_script}"
+  "${compose_run_env[@]}" \
+  "${warm_svc}" \
+  bash -lc "${warm_script}"; then
+  die "warm cache fill failed (compose run ${warm_svc})"
+fi
 
 log "warm complete (volume ${CACHE_VOLUME})"
+
+# Sequential docker-prepare per app via each app's service definition.
+case "${WARM_REHEAT:-1}" in
+  0|false|FALSE|off|OFF|no|NO)
+    log "warm: skipping reheat (WARM_REHEAT=0)"
+    ;;
+  *)
+    if [[ -x "${ROOT}/bin/reheat" ]]; then
+      log "warm: reheat (docker-prepare via compose services)"
+      "${ROOT}/bin/reheat"
+    elif [[ -n "${CLUSTER_TASKS_ROOT:-}" && -x "${CLUSTER_TASKS_ROOT}/bin/reheat" ]]; then
+      CLUSTER_ROOT="${ROOT}" "${CLUSTER_TASKS_ROOT}/bin/reheat"
+    else
+      log "warm: reheat skipped (bin/reheat missing — re-run install/wire)"
+    fi
+    ;;
+esac
