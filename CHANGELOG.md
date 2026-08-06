@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [0.10.1] - 2026-08-06
+
+### Fixed
+
+- Rematerialize **`bin/docker-prepare`** from cluster-tasks **v0.4.1** — app-scoped
+  `*_DATABASE_URL` for Postgres wait only; does not touch `DATABASE_URL`
+
 ## [0.10.0] - 2026-08-06
 
 ### Added
@@ -245,7 +252,8 @@ First tagged release of the multi-app Docker + mise cluster template.
 - Docker image build: copy root `Gemfile` so `mise install` installs Ruby (not only Node/Yarn)
 - Untrusted `fred/mise.toml` / `george/mise.toml` under the host bind mount
 
-[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.1...v0.8.2

@@ -104,12 +104,58 @@ redact_url() {
   sed -E 's#(://[^:/@]+:)[^@]+@#\1***@#' <<<"${1:-}"
 }
 
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  echo "== ${APP_NAME}: DATABASE_URL=$(redact_url "${DATABASE_URL}")"
+# Uppercase env key fragment for this app: fred → FRED, my-app → MY_APP
+app_env_prefix() {
+  printf '%s' "${APP_NAME}" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9]/_/g'
+}
+
+# Find a URL for wait/logging only. Do NOT set or export DATABASE_URL — apps
+# wire their own env (ROSS_DATABASE_URL, FRED_DATABASE_URL, …) into Rails.
+# Sets: DB_URL_FOR_WAIT, DB_URL_SOURCE (empty if nothing found).
+find_database_url_for_wait() {
+  DB_URL_FOR_WAIT=""
+  DB_URL_SOURCE=""
+
+  if [[ -n "${DATABASE_URL:-}" ]]; then
+    DB_URL_FOR_WAIT="${DATABASE_URL}"
+    DB_URL_SOURCE="DATABASE_URL"
+    return 0
+  fi
+
+  local prefix key val env_name
+  prefix="$(app_env_prefix)"
+  key="${prefix}_DATABASE_URL"
+  val="${!key:-}"
+  if [[ -n "${val}" ]]; then
+    DB_URL_FOR_WAIT="${val}"
+    DB_URL_SOURCE="${key}"
+    return 0
+  fi
+
+  if [[ -n "${PRIMARY_DATABASE_URL:-}" ]]; then
+    DB_URL_FOR_WAIT="${PRIMARY_DATABASE_URL}"
+    DB_URL_SOURCE="PRIMARY_DATABASE_URL"
+    return 0
+  fi
+
+  while IFS= read -r env_name; do
+    [[ -z "${env_name}" ]] && continue
+    val="${!env_name:-}"
+    [[ -z "${val}" ]] && continue
+    DB_URL_FOR_WAIT="${val}"
+    DB_URL_SOURCE="${env_name}"
+    return 0
+  done < <(compgen -e | grep -E "^${prefix}_[A-Z0-9_]*DATABASE_URL$" | sort)
+
+  return 1
+}
+
+if find_database_url_for_wait; then
+  echo "== ${APP_NAME}: ${DB_URL_SOURCE}=$(redact_url "${DB_URL_FOR_WAIT}")"
 elif [[ -n "${POSTGRES_HOST:-}" ]]; then
-  echo "== ${APP_NAME}: POSTGRES_HOST=${POSTGRES_HOST} POSTGRES_USER=${POSTGRES_USER:-}"
+  echo "== ${APP_NAME}: POSTGRES_HOST=${POSTGRES_HOST} POSTGRES_USER=${POSTGRES_USER:-} (no *DATABASE_URL for wait)"
 else
-  echo "== ${APP_NAME}: warning: no DATABASE_URL or POSTGRES_HOST" >&2
+  echo "== ${APP_NAME}: warning: no DATABASE_URL, $(app_env_prefix)_DATABASE_URL, or POSTGRES_HOST (wait uses defaults host=db)" >&2
 fi
 
 wait_for_postgres() {
@@ -120,13 +166,14 @@ wait_for_postgres() {
   local host="${POSTGRES_HOST:-db}"
   local user="${POSTGRES_USER:-cluster}"
   local port="${POSTGRES_PORT:-5432}"
+  local url="${DB_URL_FOR_WAIT:-}"
 
-  if [[ -n "${DATABASE_URL:-}" ]]; then
-    if [[ "${DATABASE_URL}" =~ @([^:/]+)(:([0-9]+))?/ ]]; then
+  if [[ -n "${url}" ]]; then
+    if [[ "${url}" =~ @([^:/]+)(:([0-9]+))?/ ]]; then
       host="${BASH_REMATCH[1]}"
       [[ -n "${BASH_REMATCH[3]:-}" ]] && port="${BASH_REMATCH[3]}"
     fi
-    if [[ "${DATABASE_URL}" =~ ://([^:/@]+) ]]; then
+    if [[ "${url}" =~ ://([^:/@]+) ]]; then
       user="${BASH_REMATCH[1]}"
     fi
   fi
