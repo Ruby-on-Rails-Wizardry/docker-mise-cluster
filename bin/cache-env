@@ -1,53 +1,81 @@
 #!/usr/bin/env bash
-# Export package-cache paths under CACHE_ROOT (default /cache — the Docker volume).
-# Image ENV already sets these; this is for host shells that source it intentionally.
+# Managed by cluster-tasks install — standalone copy (no sibling required)
+# Package-cache layout helper for ubuntu-mise clusters.
 #
-#   source bin/cache-env
-#   bin/cache-env                 # print
+# ubuntu-mise:dev already sets BUNDLE_*/YARN_*/MISE_*/… via image ENV + user
+# configs under $HOME. Cluster tools and compose must NOT re-inject those.
+# See: ubuntu-mise docs/runtime-env-not-required.md
+#
+#   bin/cache-env                 # print image-expected paths (diagnostic)
+#   bin/cache-env --write         # write config/cache.env stub (no package ENV)
 #   bin/cache-env --write-yarnrc  # classic Yarn offline-mirror → /cache/yarn
+#   task cache:env
+#
+# Sourcing this file is a no-op for package-cache ENV (compat with old call sites).
+set -euo pipefail
 
-_cache_env_main() {
-  export CACHE_ROOT="${CACHE_ROOT:-/cache}"
-  export BUNDLE_PATH="${BUNDLE_PATH:-${CACHE_ROOT}/bundle}"
-  export BUNDLE_CACHE_PATH="${BUNDLE_CACHE_PATH:-${CACHE_ROOT}/rubygems}"
-  # Shared plugin home (bootboot, etc.) on the volume — not ephemeral ~/.bundle.
-  export BUNDLE_USER_HOME="${BUNDLE_USER_HOME:-${CACHE_ROOT}/bundler}"
-  export BUNDLE_CLEAN="${BUNDLE_CLEAN:-false}"
-  export YARN_CACHE_FOLDER="${YARN_CACHE_FOLDER:-${CACHE_ROOT}/yarn-cache}"
-  export YARN_OFFLINE_MIRROR="${YARN_OFFLINE_MIRROR:-${CACHE_ROOT}/yarn}"
+# When executed (not sourced), use lib for ROOT + write helper.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  # shellcheck source=lib.sh
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+fi
+
+# Default layout names under /cache (match ubuntu-mise docker/cache-layout.env).
+# Read-only for diagnostics / yarnrc — do not export into the environment.
+_cache_env_defaults() {
+  CACHE_ROOT="${CACHE_ROOT:-/cache}"
+  _BUNDLE_PATH="${BUNDLE_PATH:-${CACHE_ROOT}/bundle}"
+  _BUNDLE_CACHE_PATH="${BUNDLE_CACHE_PATH:-${CACHE_ROOT}/rubygems}"
+  _MISE_DATA_DIR="${MISE_DATA_DIR:-${CACHE_ROOT}/mise}"
+  _MISE_CACHE_DIR="${MISE_CACHE_DIR:-${CACHE_ROOT}/mise-cache}"
+  _YARN_CACHE_FOLDER="${YARN_CACHE_FOLDER:-${CACHE_ROOT}/yarn-cache}"
+  _YARN_OFFLINE_MIRROR="${YARN_OFFLINE_MIRROR:-${CACHE_ROOT}/yarn}"
 }
 
 _cache_env_write_yarnrc() {
-  local root
-  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  local root="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+  _cache_env_defaults
   cat > "${root}/.yarnrc" <<EOF
 # Classic Yarn 1.x — offline mirror on the shared cache volume (/cache/yarn).
 # Prefer: task warm (writes this from inside the container with absolute path).
-yarn-offline-mirror "${YARN_OFFLINE_MIRROR}"
+# Paths come from ubuntu-mise image defaults — not compose env_file.
+yarn-offline-mirror "${_YARN_OFFLINE_MIRROR}"
 yarn-offline-mirror-pruning true
 --install.ignore-engines true
 EOF
 }
 
-_cache_env_main || return $?
-
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   case "${1:-}" in
+    --write)
+      write_cache_env_file "${ROOT}/config/cache.env"
+      ;;
     --write-yarnrc)
       _cache_env_write_yarnrc
-      echo "Wrote .yarnrc (offline-mirror → ${YARN_OFFLINE_MIRROR})"
+      _cache_env_defaults
+      echo "Wrote .yarnrc (offline-mirror → ${_YARN_OFFLINE_MIRROR})"
       ;;
     "")
-      printf 'CACHE_ROOT=%s\nBUNDLE_PATH=%s\nBUNDLE_CACHE_PATH=%s\nBUNDLE_USER_HOME=%s\nBUNDLE_CLEAN=%s\nYARN_CACHE_FOLDER=%s\nYARN_OFFLINE_MIRROR=%s\n' \
-        "${CACHE_ROOT}" "${BUNDLE_PATH}" "${BUNDLE_CACHE_PATH}" "${BUNDLE_USER_HOME}" "${BUNDLE_CLEAN}" \
-        "${YARN_CACHE_FOLDER}" "${YARN_OFFLINE_MIRROR}"
+      _cache_env_defaults
+      cat <<EOF
+# Diagnostic only — ubuntu-mise image owns these (do not compose env_file them).
+CACHE_ROOT=${CACHE_ROOT}
+BUNDLE_PATH=${_BUNDLE_PATH}
+BUNDLE_CACHE_PATH=${_BUNDLE_CACHE_PATH}
+MISE_DATA_DIR=${_MISE_DATA_DIR}
+MISE_CACHE_DIR=${_MISE_CACHE_DIR}
+YARN_CACHE_FOLDER=${_YARN_CACHE_FOLDER}
+YARN_OFFLINE_MIRROR=${_YARN_OFFLINE_MIRROR}
+EOF
       ;;
     -h|--help)
       cat <<'EOF'
 Usage:
-  source bin/cache-env
-  bin/cache-env
+  bin/cache-env                   # print image-expected /cache layout
+  bin/cache-env --write           # config/cache.env stub (no package ENV)
   bin/cache-env --write-yarnrc
+
+Package-cache ENV is provided by ubuntu-mise — do not source this to export it.
 EOF
       ;;
     *)

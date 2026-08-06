@@ -1,0 +1,485 @@
+#!/usr/bin/env bash
+# Managed by cluster-tasks install — standalone copy (no sibling required)
+# Wire or install cluster-tasks into a consumer cluster.
+#
+# ## wire (default) — sibling mode
+# Thin host wrappers exec ../cluster-tasks/bin/*; a few scripts are copied for /work.
+# Requires cluster-tasks present at runtime.
+#
+# ## install (--install / bin/install) — standalone mode
+# Copies all bins + lib.sh into the consumer and vendors the Taskfile under
+# task/cluster-tasks.yml. No runtime dependency on a sibling cluster-tasks tree.
+# Re-run install after upgrading cluster-tasks to refresh copies.
+#
+# Idempotent. Never writes config/apps.yml or compose.yml topology.
+#
+# Usage (from the consumer cluster root):
+#   ../cluster-tasks/bin/wire --yes
+#   ../cluster-tasks/bin/install --yes
+#   ../cluster-tasks/bin/wire --install --yes
+#   ../cluster-tasks/bin/wire --check
+#
+# Env:
+#   CLUSTER_ROOT          consumer (default: cwd or first arg)
+#   CLUSTER_TASKS_ROOT    this repo (default: parent of this script)
+set -euo pipefail
+
+TOOLS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+YES=0
+CHECK_ONLY=0
+MODE="wire" # wire | install
+CONSUMER=""
+
+for arg in "$@"; do
+  case "$arg" in
+    -y|--yes) YES=1 ;;
+    --check) CHECK_ONLY=1 ;;
+    --install|--standalone) MODE="install" ;;
+    --wire) MODE="wire" ;;
+    -h|--help)
+      awk 'NR==1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+      exit 0
+      ;;
+    -*)
+      echo "unknown option: $arg" >&2
+      exit 1
+      ;;
+    *)
+      CONSUMER="$arg"
+      ;;
+  esac
+done
+
+log() { printf '%s: %s\n' "${MODE}" "$*" >&2; }
+die() { log "error: $*"; exit 1; }
+
+if [[ -z "${CONSUMER}" ]]; then
+  CONSUMER="${CLUSTER_ROOT:-$PWD}"
+fi
+CONSUMER="$(cd "${CONSUMER}" && pwd)"
+[[ -f "${CONSUMER}/config/apps.yml" ]] || die "missing ${CONSUMER}/config/apps.yml (not a cluster root?)"
+[[ -f "${CONSUMER}/compose.yml" || -f "${CONSUMER}/compose.yaml" ]] || die "missing compose.yml in ${CONSUMER}"
+
+CLUSTER_TASKS_ROOT="$(cd "${CLUSTER_TASKS_ROOT:-$TOOLS_ROOT}" && pwd)"
+[[ -x "${CLUSTER_TASKS_ROOT}/bin/wire" ]] || die "CLUSTER_TASKS_ROOT invalid: ${CLUSTER_TASKS_ROOT}"
+
+# Scripts that must be real files under the consumer (compose mounts only /work).
+# install mode copies these plus all host tools (full list below).
+MATERIALIZE=(
+  docker-app
+  local-gem-env
+  apps
+)
+
+# Host-only tools: wire mode → thin wrappers; install mode → full copies.
+HOST_WRAP=(
+  compose
+  warm
+  setup
+  doctor
+  db-reset
+  cache-ensure
+  cache-reset
+  cache-env
+  ensure-bundle-config
+  config
+  wire
+  install
+  nuke-bootboot
+  local-gem
+  env-files
+)
+
+# Full copy set for install mode (host + container + shared lib).
+INSTALL_COPY=(
+  lib.sh
+  mise-host-env.sh
+  "${MATERIALIZE[@]}"
+  "${HOST_WRAP[@]}"
+)
+
+MANAGED_BEGIN="# BEGIN cluster-tasks wire"
+MANAGED_END="# END cluster-tasks wire"
+WRAPPER_MARK="# Managed by cluster-tasks wire — do not edit by hand"
+INSTALL_MARK="# Managed by cluster-tasks install — standalone copy (no sibling required)"
+
+write_wrapper() {
+  local name=$1
+  local dest="${CONSUMER}/bin/${name}"
+  cat >"${dest}" <<EOF
+#!/usr/bin/env bash
+${WRAPPER_MARK}
+set -euo pipefail
+export CLUSTER_ROOT="${CONSUMER}"
+export CLUSTER_TASKS_ROOT="${CLUSTER_TASKS_ROOT}"
+exec "\${CLUSTER_TASKS_ROOT}/bin/${name}" "\$@"
+EOF
+  chmod +x "${dest}"
+}
+
+materialize_script() {
+  local name=$1
+  local mark=${2:-"${WRAPPER_MARK} (materialized for in-container /work/bin)"}
+  local src="${CLUSTER_TASKS_ROOT}/bin/${name}"
+  local dest="${CONSUMER}/bin/${name}"
+  [[ -f "${src}" ]] || die "missing ${src}"
+  {
+    echo "#!/usr/bin/env bash"
+    echo "${mark}"
+    if head -1 "${src}" | grep -q '^#!'; then
+      tail -n +2 "${src}"
+    else
+      cat "${src}"
+    fi
+  } >"${dest}"
+  chmod +x "${dest}"
+}
+
+ensure_bundler_clean_false() {
+  local flags="${CONSUMER}/config/bundler-flags.yml"
+  if [[ ! -f "${flags}" ]]; then
+    mkdir -p "${CONSUMER}/config"
+    cat >"${flags}" <<'EOF'
+---
+# Seeded by cluster-tasks wire. Multi-app shared BUNDLE_PATH / BUNDLE_CACHE_PATH.
+# CLEAN=false  → do not prune installed gems for sibling apps
+# NO_PRUNE=true → do not prune shared cache on `bundle cache` (per-app lockfiles differ)
+BUNDLE_CACHE_ALL: "true"
+BUNDLE_CACHE_ALL_PLATFORMS: "true"
+BUNDLE_DISABLE_SHARED_GEMS: "true"
+BUNDLE_CLEAN: "false"
+BUNDLE_NO_PRUNE: "true"
+BUNDLE_JOBS: "4"
+BUNDLE_RETRY: "3"
+EOF
+    log "created ${flags} with multi-app BUNDLE_CLEAN/NO_PRUNE"
+    return 0
+  fi
+  force_flag() {
+    local key=$1 val=$2
+    if grep -qE "^${key}:" "${flags}"; then
+      if grep -qE "^${key}:[[:space:]]*\"?${val}\"?" "${flags}"; then
+        log "${key} already ${val} in ${flags}"
+      else
+        sed -i "s/^${key}:.*/${key}: \"${val}\"/" "${flags}"
+        log "set ${key}=${val} in ${flags}"
+      fi
+    else
+      printf '%s: "%s"\n' "${key}" "${val}" >>"${flags}"
+      log "appended ${key}=${val} to ${flags}"
+    fi
+  }
+  force_flag BUNDLE_CLEAN false
+  force_flag BUNDLE_NO_PRUNE true
+}
+
+# Rewrite Taskfile.yml to: header + version + optional custom env/tasks + managed include.
+# Removes consumer tasks whose names already exist in cluster-tasks (avoids flatten dupes).
+# Never touches config/apps.yml.
+# Args: optional path to library Taskfile (default: sibling cluster-tasks task/Taskfile.yml).
+ensure_taskfile_include() {
+  local tf="${CONSUMER}/Taskfile.yml"
+  local lib_tf="${1:-${CLUSTER_TASKS_ROOT}/task/Taskfile.yml}"
+  local rel
+  rel=$(ruby -r pathname -e 'puts Pathname.new(ARGV[1]).relative_path_from(Pathname.new(ARGV[0]))' \
+    "${CONSUMER}" "${lib_tf}")
+
+  CONSUMER_TF="${tf}" LIB_TF="${lib_tf}" REL_TF="${rel}" \
+    BEGIN_MARK="${MANAGED_BEGIN}" END_MARK="${MANAGED_END}" \
+    MODE_NOTE="${MODE}" \
+    ruby <<'RUBY'
+require "yaml"
+require "pathname"
+
+tf_path = Pathname(ENV.fetch("CONSUMER_TF"))
+lib_path = Pathname(ENV.fetch("LIB_TF"))
+rel = ENV.fetch("REL_TF")
+begin_m = ENV.fetch("BEGIN_MARK")
+end_m = ENV.fetch("END_MARK")
+
+def write_thin!(tf_path, rel, begin_m, end_m, msg)
+  tf_path.write(
+    <<~YAML
+      # Host UX — includes sibling cluster-tasks (wired).
+      # App list lives in config/apps.yml — wire never overwrites it.
+      version: "3"
+
+      #{begin_m}
+      # Sibling cluster-tasks Taskfile (see CLUSTER_TASKS_ROOT / ../cluster-tasks)
+      includes:
+        ct:
+          taskfile: #{rel}
+          dir: .
+          flatten: true
+      #{end_m}
+    YAML
+  )
+  warn "wire: #{msg}"
+end
+
+def strip_managed(text, begin_m, end_m)
+  skip = false
+  text.each_line.filter_map do |line|
+    s = line.strip
+    if s == begin_m
+      skip = true
+      next
+    end
+    if s == end_m
+      skip = false
+      next
+    end
+    line unless skip
+  end.join
+end
+
+lib = YAML.safe_load(lib_path.read, aliases: true) || {}
+lib_tasks = (lib["tasks"] || {}).keys.map(&:to_s)
+lib_env = (lib["env"] || {}).keys.map(&:to_s)
+
+# Old hard-coded per-app shortcuts — superseded by apps.yml-driven library tasks:
+#   up:fred       → task up -- fred
+#   db:reset:fred → task db:reset -- fred
+#   fred:         → task app -- fred …
+apps_yml = tf_path.dirname.join("config/apps.yml")
+app_names = []
+if apps_yml.file?
+  begin
+    acfg = YAML.safe_load(apps_yml.read, aliases: true) || {}
+    app_names = (acfg["apps"] || []).map { |a| a.is_a?(Hash) ? a["name"].to_s : nil }.compact
+  rescue StandardError
+    app_names = []
+  end
+end
+obsolete = {}
+app_names.each do |n|
+  obsolete["up:#{n}"] = true
+  obsolete["db:reset:#{n}"] = true
+  obsolete[n] = true
+end
+
+custom_tasks = {}
+custom_env = {}
+version = "3"
+had_file = tf_path.file?
+stripped = []
+
+if had_file
+  body = strip_managed(tf_path.read, begin_m, end_m)
+  begin
+    data = YAML.safe_load(body, aliases: true) || {}
+  rescue StandardError => e
+    write_thin!(tf_path, rel, begin_m, end_m, "rewrote thin Taskfile (parse failed: #{e.message})")
+    exit 0
+  end
+  version = (data["version"] || "3").to_s
+  (data["tasks"] || {}).each do |name, defn|
+    name = name.to_s
+    if lib_tasks.include?(name) || obsolete[name]
+      stripped << name
+      next
+    end
+    custom_tasks[name] = defn
+  end
+  (data["env"] || {}).each do |key, val|
+    key = key.to_s
+    next if lib_env.include?(key)
+    custom_env[key] = val
+  end
+end
+
+doc = { "version" => version }
+doc["env"] = custom_env unless custom_env.empty?
+doc["tasks"] = custom_tasks unless custom_tasks.empty?
+
+mode_note = ENV.fetch("MODE_NOTE", "wire")
+include_comment =
+  if mode_note == "install"
+    "Vendored cluster-tasks Taskfile (standalone install — task/cluster-tasks.yml)"
+  else
+    "Sibling cluster-tasks Taskfile (see CLUSTER_TASKS_ROOT / ../cluster-tasks)"
+  end
+
+header = <<~H
+  # Host UX — cluster-tasks (#{mode_note}).
+  # App list lives in config/apps.yml — wire/install never overwrites it.
+H
+yaml_body = YAML.dump(doc).sub(/\A---\n/, "")
+block = <<~B
+  #{begin_m}
+  # #{include_comment}
+  includes:
+    ct:
+      taskfile: #{rel}
+      dir: .
+      flatten: true
+  #{end_m}
+B
+tf_path.write(header + yaml_body + "\n" + block)
+
+if had_file
+  warn "#{mode_note}: Taskfile.yml refreshed — stripped #{stripped.size} library task(s), kept #{custom_tasks.size} custom"
+  warn "#{mode_note}:   removed: #{stripped.sort.join(', ')}" unless stripped.empty?
+  warn "#{mode_note}:   kept: #{custom_tasks.keys.sort.join(', ')}" unless custom_tasks.empty?
+else
+  warn "#{mode_note}: created thin Taskfile.yml with cluster-tasks include"
+end
+RUBY
+}
+
+write_env_file() {
+  if [[ "${MODE}" == "install" ]]; then
+    cat >"${CONSUMER}/.cluster-tasks.env" <<EOF
+# Generated by cluster-tasks install — standalone (no sibling required)
+#   source .cluster-tasks.env
+export CLUSTER_ROOT="${CONSUMER}"
+# CLUSTER_TASKS_ROOT unset: bins live under ${CONSUMER}/bin
+export CLUSTER_TASKS_MODE=install
+EOF
+  else
+    cat >"${CONSUMER}/.cluster-tasks.env" <<EOF
+# Generated by cluster-tasks wire — source in your shell if useful
+#   source .cluster-tasks.env
+export CLUSTER_ROOT="${CONSUMER}"
+export CLUSTER_TASKS_ROOT="${CLUSTER_TASKS_ROOT}"
+export CLUSTER_TASKS_MODE=wire
+EOF
+  fi
+  log "wrote ${CONSUMER}/.cluster-tasks.env"
+}
+
+vendor_taskfile() {
+  local dest="${CONSUMER}/task/cluster-tasks.yml"
+  local src="${CLUSTER_TASKS_ROOT}/task/Taskfile.yml"
+  mkdir -p "${CONSUMER}/task"
+  {
+    echo "# Vendored by cluster-tasks install — refresh with bin/install"
+    cat "${src}"
+  } >"${dest}"
+  log "vendored Taskfile → ${dest}"
+}
+
+report() {
+  log "mode:           ${MODE}"
+  log "consumer:       ${CONSUMER}"
+  log "cluster-tasks:  ${CLUSTER_TASKS_ROOT} (source only${MODE:+ during ${MODE}})"
+  log "apps.yml:       ${CONSUMER}/config/apps.yml (read-only — never overwritten)"
+  log "apps:           $(CLUSTER_ROOT="${CONSUMER}" "${CLUSTER_TASKS_ROOT}/bin/apps" names-oneline 2>/dev/null || echo '?')"
+}
+
+if [[ "${CHECK_ONLY}" -eq 1 ]]; then
+  report
+  if [[ -x "${CONSUMER}/bin/doctor" ]]; then
+    CLUSTER_ROOT="${CONSUMER}" CLUSTER_TASKS_ROOT="${CLUSTER_TASKS_ROOT}" \
+      "${CONSUMER}/bin/doctor" || true
+  fi
+  exit 0
+fi
+
+if [[ "${YES}" -ne 1 ]]; then
+  if [[ "${MODE}" == "install" ]]; then
+    printf 'Install cluster-tasks STANDALONE into\n  %s\nfrom\n  %s\n(no sibling dependency after install)? [y/N] ' \
+      "${CONSUMER}" "${CLUSTER_TASKS_ROOT}"
+  else
+    printf 'Wire cluster-tasks (sibling wrappers) into\n  %s\nfrom\n  %s\n? [y/N] ' \
+      "${CONSUMER}" "${CLUSTER_TASKS_ROOT}"
+  fi
+  read -r ans
+  [[ "${ans}" == [yY] || "${ans}" == [yY][eE][sS] ]] || { log "aborted"; exit 0; }
+fi
+
+report
+mkdir -p "${CONSUMER}/bin" "${CONSUMER}/config"
+
+if [[ "${MODE}" == "install" ]]; then
+  log "installing full bin/* copies (standalone) → ${CONSUMER}/bin/"
+  for s in "${INSTALL_COPY[@]}"; do
+    [[ -f "${CLUSTER_TASKS_ROOT}/bin/${s}" ]] || continue
+    materialize_script "${s}" "${INSTALL_MARK}"
+    log "  copy ${s}"
+  done
+  vendor_taskfile
+  ensure_bundler_clean_false
+  ensure_taskfile_include "${CONSUMER}/task/cluster-tasks.yml"
+else
+  log "materializing in-container scripts → ${CONSUMER}/bin/"
+  for s in "${MATERIALIZE[@]}"; do
+    materialize_script "${s}"
+    log "  copy ${s}"
+  done
+
+  log "writing host wrappers → ${CONSUMER}/bin/"
+  for s in "${HOST_WRAP[@]}"; do
+    [[ -f "${CLUSTER_TASKS_ROOT}/bin/${s}" ]] || continue
+    write_wrapper "${s}"
+    log "  wrap ${s}"
+  done
+
+  ensure_bundler_clean_false
+  ensure_taskfile_include
+fi
+
+write_env_file
+
+# gitignore helpers
+if [[ -f "${CONSUMER}/.gitignore" ]]; then
+  if ! grep -q '^\.cluster-tasks\.env$' "${CONSUMER}/.gitignore" 2>/dev/null; then
+    printf '\n# cluster-tasks wire/install\n.cluster-tasks.env\n' >>"${CONSUMER}/.gitignore"
+    log "appended .cluster-tasks.env to .gitignore"
+  fi
+  if ! grep -q '^\.local-gems\.disabled$' "${CONSUMER}/.gitignore" 2>/dev/null; then
+    printf '.local-gems.disabled\n' >>"${CONSUMER}/.gitignore"
+    log "appended .local-gems.disabled to .gitignore"
+  fi
+  if ! grep -q 'config/cache\.env' "${CONSUMER}/.gitignore" 2>/dev/null; then
+    printf 'config/cache.env\n' >>"${CONSUMER}/.gitignore"
+    log "appended config/cache.env to .gitignore"
+  fi
+  if ! grep -q 'config/compose\.env' "${CONSUMER}/.gitignore" 2>/dev/null; then
+    printf 'config/compose.env\n' >>"${CONSUMER}/.gitignore"
+    log "appended config/compose.env to .gitignore"
+  fi
+  if ! grep -q '^compose\.secrets\.yml$' "${CONSUMER}/.gitignore" 2>/dev/null; then
+    printf 'compose.secrets.yml\n' >>"${CONSUMER}/.gitignore"
+    log "appended compose.secrets.yml to .gitignore"
+  fi
+  # Shared + per-app secrets (vault). Leave user .env alone (not managed by us).
+  if ! grep -q '^\.common\.env$' "${CONSUMER}/.gitignore" 2>/dev/null; then
+    printf '.common.env\n' >>"${CONSUMER}/.gitignore"
+    log "appended .common.env to .gitignore"
+  fi
+  if ! grep -q '^\.\*\.env$' "${CONSUMER}/.gitignore" 2>/dev/null && ! grep -q '^\.\*\.env' "${CONSUMER}/.gitignore" 2>/dev/null; then
+    printf '.*.env\n' >>"${CONSUMER}/.gitignore"
+    log "appended .*.env to .gitignore"
+  fi
+fi
+
+# Seed cache/shared env + secrets compose fragment (docs/ENV.md).
+# Prefer consumer bin after install; else source tree.
+if [[ -x "${CONSUMER}/bin/env-files" ]] && ! head -5 "${CONSUMER}/bin/env-files" 2>/dev/null | grep -q 'exec "\${CLUSTER_TASKS_ROOT}'; then
+  CLUSTER_ROOT="${CONSUMER}" "${CONSUMER}/bin/env-files" write
+else
+  CLUSTER_ROOT="${CONSUMER}" "${CLUSTER_TASKS_ROOT}/bin/env-files" write
+fi
+
+log "running doctor…"
+export CLUSTER_ROOT="${CONSUMER}"
+export CLUSTER_TASKS_ROOT
+if [[ -x "${CONSUMER}/bin/doctor" ]]; then
+  # installed doctor should not require sibling
+  if [[ "${MODE}" == "install" ]]; then
+    unset CLUSTER_TASKS_ROOT || true
+  fi
+  "${CONSUMER}/bin/doctor" || true
+else
+  "${CLUSTER_TASKS_ROOT}/bin/doctor" || true
+fi
+
+log "done. From the cluster root:  task warm   /   task up:all"
+if [[ "${MODE}" == "install" ]]; then
+  log "Standalone: bins live under ${CONSUMER}/bin — sibling cluster-tasks not required at runtime."
+  log "Refresh after upgrading cluster-tasks:  ../cluster-tasks/bin/install --yes"
+else
+  log "Sibling mode: re-run wire after updating cluster-tasks to refresh wrappers."
+  log "For no sibling dependency:  ../cluster-tasks/bin/install --yes"
+fi

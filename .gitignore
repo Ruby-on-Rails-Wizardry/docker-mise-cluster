@@ -69,3 +69,12 @@ spec/examples.txt
 # Optional machine overrides (committed defaults live in .mise.env)
 .mise.env.local
 .task/
+
+# cluster-tasks wire
+.cluster-tasks.env
+.local-gems.disabled
+config/cache.env
+compose.secrets.yml
+.*.env
+config/compose.env
+.common.env

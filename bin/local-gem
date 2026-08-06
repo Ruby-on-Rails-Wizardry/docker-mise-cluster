@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# Managed by cluster-tasks install — standalone copy (no sibling required)
+# Manage Bundler local.* path overrides for shared_gems (config/apps.yml).
+#
+# Local mode is ON by default when shared_gems is non-empty. Disable writes a
+# flag so warm / docker-app / setup skip BUNDLE_LOCAL__* (published source wins).
+#
+# Usage:
+#   bin/local-gem status
+#   bin/local-gem enable
+#   bin/local-gem disable
+#   bin/local-gem env [--print] [/work]
+#   bin/local-gem on | off          # aliases for enable | disable
+#   task local-gem -- status
+#
+# Env:
+#   LOCAL_GEMS=0|false|off   one-shot disable (also checked by warm/docker-app)
+#   LOCAL_GEMS=1|true|on     force enable despite .local-gems.disabled
+#   CLUSTER_ROOT             consumer cluster root
+#
+# Flag file (gitignored by wire):  <cluster>/.local-gems.disabled
+set -euo pipefail
+
+if [[ -n "${CLUSTER_ROOT:-}" && -f "${CLUSTER_ROOT}/config/apps.yml" ]]; then
+  ROOT="$(cd "${CLUSTER_ROOT}" && pwd)"
+elif [[ -f "${PWD}/config/apps.yml" ]]; then
+  ROOT="${PWD}"
+elif [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config/apps.yml" ]]; then
+  ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+else
+  echo "local-gem: error: cannot find cluster root (config/apps.yml). Set CLUSTER_ROOT or run from the cluster tree." >&2
+  exit 1
+fi
+
+APPS_YML="${ROOT}/config/apps.yml"
+FLAG="${ROOT}/.local-gems.disabled"
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Prefer consumer materialized copy; fall back to this tree (wire host wrapper).
+if [[ -x "${ROOT}/bin/local-gem-env" ]]; then
+  ENV_BIN="${ROOT}/bin/local-gem-env"
+elif [[ -x "${BIN_DIR}/local-gem-env" ]]; then
+  ENV_BIN="${BIN_DIR}/local-gem-env"
+else
+  ENV_BIN=""
+fi
+
+log() { printf 'local-gem: %s\n' "$*"; }
+
+usage() {
+  awk 'NR==1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+}
+
+# Returns 0 when local overrides should be applied.
+local_gems_enabled() {
+  case "${LOCAL_GEMS:-}" in
+    0|false|FALSE|off|OFF|no|NO) return 1 ;;
+    1|true|TRUE|on|ON|yes|YES) return 0 ;;
+  esac
+  if [[ -f "${FLAG}" ]]; then
+    return 1
+  fi
+  return 0
+}
+
+cmd_status() {
+  local enabled=0
+  local_gems_enabled && enabled=1
+
+  log "cluster: ${ROOT}"
+  if [[ "${enabled}" -eq 1 ]]; then
+    log "mode:    ENABLED (path checkouts via BUNDLE_LOCAL__*)"
+  else
+    log "mode:    DISABLED (Gemfile / lock published source)"
+  fi
+  if [[ -n "${LOCAL_GEMS:-}" ]]; then
+    log "env:     LOCAL_GEMS=${LOCAL_GEMS}"
+  fi
+  if [[ -f "${FLAG}" ]]; then
+    log "flag:    ${FLAG} present"
+  else
+    log "flag:    none (default on)"
+  fi
+
+  echo
+  echo "shared_gems (config/apps.yml):"
+  ruby -r yaml -e '
+cfg = YAML.load_file(ARGV[0]) || {}
+gems = cfg["shared_gems"] || []
+if gems.empty?
+  puts "  (none — add entries under shared_gems)"
+  exit 0
+end
+root = ARGV[1]
+gems.each do |g|
+  next unless g.is_a?(Hash)
+  name = g.fetch("name")
+  path = g.fetch("path", name)
+  full = File.join(root, path)
+  env = "BUNDLE_LOCAL__" + name.to_s.upcase.tr("-", "_")
+  ok = File.directory?(full) ? "ok" : "MISSING"
+  puts "  - #{name}  path=#{path}  (#{ok})  → #{env}=#{full}"
+end
+' "${APPS_YML}" "${ROOT}"
+
+  if [[ -n "${ENV_BIN}" ]] && local_gems_enabled; then
+    echo
+    echo "would export (host):"
+    CLUSTER_ROOT="${ROOT}" "${ENV_BIN}" --print | sed 's/^/  /' || true
+  fi
+
+  echo
+  if [[ "${enabled}" -eq 1 ]]; then
+    log "host shell:  eval \"\$(bin/local-gem env)\""
+    log "containers:  task warm  /  app boot apply /work paths automatically"
+  else
+    log "re-enable:   bin/local-gem enable   then task warm + restart apps"
+  fi
+}
+
+cmd_enable() {
+  if [[ -f "${FLAG}" ]]; then
+    rm -f "${FLAG}"
+    log "removed ${FLAG}"
+  else
+    log "already enabled (no disable flag)"
+  fi
+  log "mode: ENABLED"
+  log "next: task warm  (and restart app containers if running)"
+  log "host: eval \"\$(bin/local-gem env)\""
+}
+
+cmd_disable() {
+  touch "${FLAG}"
+  log "wrote ${FLAG}"
+  log "mode: DISABLED — warm/docker-app will not set BUNDLE_LOCAL__*"
+  log "next: task warm  (and restart app containers if running)"
+  if [[ -n "${ENV_BIN}" ]]; then
+    echo
+    echo "unset in this shell (if previously eval'd):"
+    CLUSTER_ROOT="${ROOT}" "${ENV_BIN}" --print 2>/dev/null | while IFS= read -r line; do
+      key="${line%%=*}"
+      [[ -n "${key}" ]] && echo "  unset ${key}"
+    done
+  fi
+}
+
+cmd_env() {
+  if [[ -z "${ENV_BIN}" ]]; then
+    echo "local-gem: error: local-gem-env not found" >&2
+    exit 1
+  fi
+  if ! local_gems_enabled; then
+    # Emit nothing when disabled so eval is a no-op (safe).
+    if [[ "$*" == *"--print"* ]]; then
+      : # silent
+    else
+      echo "# local-gem: DISABLED — no BUNDLE_LOCAL__* exports" >&2
+    fi
+    return 0
+  fi
+  CLUSTER_ROOT="${ROOT}" "${ENV_BIN}" "$@"
+}
+
+cmd="${1:-status}"
+shift || true
+
+case "${cmd}" in
+  status|st) cmd_status ;;
+  enable|on) cmd_enable ;;
+  disable|off) cmd_disable ;;
+  env|export) cmd_env "$@" ;;
+  -h|--help|help) usage ;;
+  *)
+    echo "local-gem: unknown command: ${cmd}" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

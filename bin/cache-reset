@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Managed by cluster-tasks install — standalone copy (no sibling required)
 # Remove the shared /cache volume (destructive). Requires CONFIRM=1 or -y.
 set -euo pipefail
 # shellcheck source=lib.sh

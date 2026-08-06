@@ -9,8 +9,8 @@ cd ../ubuntu-mise && task build && cd -
 mise install && task doctor
 bin/compose build nginx   # local cluster-nginx:dev
 task warm                 # fill volume `cache` → /cache
-task up:all               # or: task up:fred (single app)
-# http://localhost:8080/   (/fred/ /ron/ /harry/ /george/)
+task up:all               # or: task up -- fred (single app)
+# http://localhost:8080/   (paths from config/apps.yml)
 ```
 
 | Step | What |
@@ -76,9 +76,10 @@ There is no separate host `.cache` tree for containers. Host and Mac/WSL all war
 
 ```bash
 task up:all
-task up:fred
+task up -- fred
 task compose -- ps
-task db:reset:fred
+task db:reset -- fred
+task app -- fred setup
 bin/compose --profile dev run --rm dev
 ```
 

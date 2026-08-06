@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Managed by cluster-tasks install — standalone copy (no sibling required)
 # Start a Rails app inside the Ubuntu+mise dev container.
 # Prefer a prior `bin/warm` so gems/yarn/mise are already on the cache volume.
 
@@ -7,12 +8,17 @@ set -euo pipefail
 PORT="${PORT:-3000}"
 APP_NAME="$(basename "$(pwd)")"
 
-CLUSTER_ROOT="${WORKSPACE:-/work}"
+# Project root inside the container (bind mount). Override: WORK_MOUNT or WORKSPACE.
+WORK_MOUNT="${WORK_MOUNT:-${WORKSPACE:-/work}}"
+export WORK_MOUNT
+export WORKSPACE="${WORKSPACE:-${WORK_MOUNT}}"
+CLUSTER_ROOT="${WORKSPACE}"
 if [[ ! -f "${CLUSTER_ROOT}/bin/docker-app" ]]; then
   CLUSTER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fi
 
-# Image ENV already points BUNDLE_*/YARN_*/MISE_* at /cache. Dev: mise at runtime.
+# Package-cache paths (BUNDLE_*/YARN_*/MISE_*) come from ubuntu-mise image —
+# do not re-export them. Dev: mise at runtime.
 if command -v mise >/dev/null 2>&1; then
   mise trust "${CLUSTER_ROOT}" 2>/dev/null || true
   mise trust . 2>/dev/null || true
@@ -23,20 +29,27 @@ if command -v mise >/dev/null 2>&1; then
   eval "$(mise activate bash)" 2>/dev/null || true
 fi
 
-# Plugins (bootboot, …) on the shared volume when image/runtime did not set them.
-export BUNDLE_USER_HOME="${BUNDLE_USER_HOME:-/cache/bundler}"
-export BUNDLE_CLEAN="${BUNDLE_CLEAN:-false}"
-mkdir -p "${BUNDLE_USER_HOME}" 2>/dev/null || true
-
 # Shared gems: Gemfile pins published version; local path for cluster checkout.
-if [[ -x "${CLUSTER_ROOT}/bin/local-gem-env" ]]; then
+# Off when .local-gems.disabled or LOCAL_GEMS=0|false|off (see bin/local-gem).
+_local_gems_on=1
+case "${LOCAL_GEMS:-}" in
+  0|false|FALSE|off|OFF|no|NO) _local_gems_on=0 ;;
+  1|true|TRUE|on|ON|yes|YES) _local_gems_on=1 ;;
+  *)
+    if [[ -f "${CLUSTER_ROOT}/.local-gems.disabled" ]]; then
+      _local_gems_on=0
+    fi
+    ;;
+esac
+if [[ "${_local_gems_on}" -eq 1 && -x "${CLUSTER_ROOT}/bin/local-gem-env" ]]; then
   # shellcheck disable=SC1090
-  eval "$("${CLUSTER_ROOT}/bin/local-gem-env" /work)"
+  eval "$("${CLUSTER_ROOT}/bin/local-gem-env" "${WORK_MOUNT}")"
+elif [[ "${_local_gems_on}" -eq 0 ]]; then
+  echo "== ${APP_NAME}: local gem overrides DISABLED"
 fi
 
 echo "== ${APP_NAME}: BUNDLE_PATH=${BUNDLE_PATH:-/cache/bundle}"
 echo "== ${APP_NAME}: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH:-/cache/rubygems}"
-echo "== ${APP_NAME}: BUNDLE_USER_HOME=${BUNDLE_USER_HOME}"
 echo "== ${APP_NAME}: YARN_CACHE_FOLDER=${YARN_CACHE_FOLDER:-/cache/yarn-cache}"
 echo "== ${APP_NAME}: ruby $(ruby -v 2>/dev/null || echo missing)"
 echo "== ${APP_NAME}: yarn $(yarn --version 2>/dev/null || echo unknown)"
@@ -82,16 +95,35 @@ else
 fi
 
 wait_for_postgres() {
+  # Readiness only — do not open the app database. On a fresh volume the app DB
+  # does not exist until rails db:prepare below; connecting via ActiveRecord
+  # would always fail until then.
   local attempts="${1:-30}"
   local i
+  local host="${POSTGRES_HOST:-db}"
+  local user="${POSTGRES_USER:-cluster}"
+  local port="${POSTGRES_PORT:-5432}"
+
+  if [[ -n "${DATABASE_URL:-}" ]]; then
+    # postgresql://user:pass@host:port/db  or  postgresql://user@host/db
+    if [[ "${DATABASE_URL}" =~ @([^:/]+)(:([0-9]+))?/ ]]; then
+      host="${BASH_REMATCH[1]}"
+      [[ -n "${BASH_REMATCH[3]:-}" ]] && port="${BASH_REMATCH[3]}"
+    fi
+    if [[ "${DATABASE_URL}" =~ ://([^:/@]+) ]]; then
+      user="${BASH_REMATCH[1]}"
+    fi
+  fi
+
   for ((i = 1; i <= attempts; i++)); do
-    if bin/rails runner 'ActiveRecord::Base.connection.execute("SELECT 1")' >/dev/null 2>&1; then
+    if command -v pg_isready >/dev/null 2>&1 && \
+      pg_isready -h "${host}" -p "${port}" -U "${user}" -d postgres >/dev/null 2>&1; then
       return 0
     fi
     echo "== ${APP_NAME}: waiting for PostgreSQL (${i}/${attempts})…"
     sleep 2
   done
-  echo "error: ${APP_NAME}: could not connect to PostgreSQL" >&2
+  echo "error: ${APP_NAME}: could not connect to PostgreSQL (${host}:${port})" >&2
   return 1
 }
 

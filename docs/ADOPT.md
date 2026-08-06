@@ -4,21 +4,47 @@ This repo (**docker-mise-cluster**) is a **dev multi-app shell**: Compose, nginx
 
 Typical layout when adopting: clone or copy this tree as **`work/`** (directory name becomes the Compose project name).
 
+## Preferred: sibling cluster-tasks + this template
+
+Host orchestration is extracted into **[cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** (sibling clone). The cluster keeps **compose, nginx, apps.yml, app submodules**.
+
+```text
+parent/
+├── cluster-tasks/           # clone once; shared by many clusters
+└── work/                    # this template (or docker-mise-cluster/)
+    ├── Taskfile.yml         # includes ../cluster-tasks (wire manages)
+    ├── bin/                 # wrappers + materialized in-container scripts
+    ├── config/apps.yml
+    ├── compose.yml
+    └── …
+```
+
+```bash
+git clone git@github.com:Ruby-on-Rails-Wizardry/cluster-tasks.git ../cluster-tasks
+# this tree already present as work/ or docker-mise-cluster/
+cd work   # or docker-mise-cluster
+../cluster-tasks/bin/wire --yes
+task doctor
+task warm
+task up:all
+```
+
+`wire` is idempotent: host wrappers, materializes `docker-app` / `apps` / `local-gem-env` for `/work`, sets `BUNDLE_CLEAN=false`, installs Task include with `flatten: true`.
+
 ## What to bring over
 
-Copy the **orchestration layer** as a unit:
+Copy the **project-owned** layer (apps + topology). Prefer wiring **cluster-tasks** for host bins rather than forking them forever:
 
 | Path | Role |
 |------|------|
-| `bin/` | `compose`, `warm`, `docker-app`, `apps`, `doctor`, `db-reset`, `lib.sh`, … |
+| `bin/` (after wire) | Host wrappers → cluster-tasks; materialized `docker-app`, `apps`, `local-gem-env` |
 | `compose.yml` | Stack + shared `x-app` + volume `cache` |
 | `config/apps.yml` | App list + `shared_gems` (rewrite for your apps) |
 | `config/bundler-flags.yml` | Default Bundler flags (seeded into each app’s private `.bundle/config`) |
-| `bin/local-gem-env` | Dev path overrides for shared gems (`BUNDLE_LOCAL__*`) |
 | `nginx/` | Path reverse proxy + home page |
 | `docker/postgres/` | Optional notes (Rails `db:prepare` creates DBs by default) |
 | `nginx/Dockerfile` | Local nginx image build |
-| `Taskfile.yml`, `mise.toml`, `.mise.env` | Host tasks + defaults |
+| `Taskfile.yml`, `mise.toml`, `.mise.env` | Host tasks + defaults (Taskfile include managed by wire) |
 | Root `package.json` / `yarn.lock` | Yarn workspaces (adjust names) |
 | `.gitignore`, `.dockerignore`, `.env.example` | Hygiene |
 | `.gitmodules` | Point at **your** app repos |
@@ -48,7 +74,7 @@ Also update:
 
 - **`.gitmodules`** — real remotes and branches  
 - **`package.json` `workspaces`** — real app directory names  
-- **`Taskfile.yml`** — `up:*` / `db:reset:*` / `task <app>` if you keep shortcuts  
+- **`Taskfile.yml`** — generic `up:all` / `up -- name` / `db:reset -- name` / `app -- name` (no hard-coded apps)  
 
 Path prefixes often **differ** from directory names in real systems (e.g. `/activity` vs `ron/`). Set `url_root` to the **browser path**, not necessarily the folder name.
 
@@ -56,7 +82,18 @@ Path prefixes often **differ** from directory names in real systems (e.g. `/acti
 
 Full write-up: **[docs/SHARED-GEMS.md](SHARED-GEMS.md)** (pattern, day-to-day, add a gem, troubleshooting).
 
-Reusable host Task/bin tooling (future extract): **[cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** — see that repo’s `docs/PLAN.md` / `docs/TODO.md`.
+Reusable host Task/bin tooling: **[cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** as a **sibling** clone (not nested).
+
+```bash
+# parent/
+#   cluster-tasks/
+#   docker-mise-cluster/   # this tree
+cd ../docker-mise-cluster
+../cluster-tasks/bin/wire --yes
+task doctor
+```
+
+`wire` is idempotent: host wrappers + in-container `bin/docker-app` copies, Task include, `BUNDLE_CLEAN=false`. See cluster-tasks `docs/PLAN.md` / `docs/TODO.md`.
 
 Short version: Gemfile pins the **published** form; cluster dev uses
 `bin/local-gem-env` → `BUNDLE_LOCAL__*` path override. Do not use bootboot for this.
@@ -87,8 +124,8 @@ cd work               # this tree (or docker-mise-cluster/)
 mise install          # Task, etc. on host if you use Task
 bin/compose build nginx
 task warm             # fill Docker volume `cache` → /cache (apps from config/apps.yml)
-task up:all           # or task up:fred for a single app
-# http://localhost:8080/   (/fred/ /ron/ /harry/ /george/)
+task up:all           # or: task up -- app1
+# http://localhost:8080/   (url_roots from config/apps.yml)
 ```
 
 | Step | What |
@@ -152,8 +189,9 @@ Production remains **per-app Kamal** (hostname routing), not this compose file �
 
 | Tree | Role |
 |------|------|
-| This repo | Dev multi-app template |
-| `../ubuntu-mise` (umbrella) | Base image + host UX |
+| This repo | Dev multi-app template (consumer of cluster-tasks) |
+| `../cluster-tasks` | Sibling host tooling (`wire`, warm, doctor, Task library) |
+| `../ubuntu-mise` | Base image + host UX |
 | `../partial/` (umbrella) | Anonymized real multi-app cluster (oauth2, Nexus-style images) — patterns only |
 
 ## Checklist

@@ -9,9 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Sibling [cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** adoption (branch `cluster-tasks-phase1`): `task wire` / `../cluster-tasks/bin/wire`, thin host `bin/*` wrappers, materialized `docker-app` / `apps` / `local-gem-env`, Task include with `flatten: true`
+- Docs: AGENTS / ADOPT / SHARED-GEMS describe sibling wire + `BUNDLE_CLEAN=false`
+
 ### Changed
 
+- **cluster-tasks phase 1:** host UX is fully driven by `config/apps.yml` — no
+  hard-coded demo app names in `bin/*` or Taskfile; `up:all` uses
+  `bin/apps names-oneline`; per-app Task is `task app -- NAME …`
+- Compose **no longer** `env_file`s package-cache vars (`BUNDLE_*` / `YARN_*` / …);
+  relies on **ubuntu-mise** user configs + image. `config/shared.env` only for app non-secrets
+- **Env layers:** leave **`.env` alone**; shared secrets in **`.common.env`**;
+  shared non-secrets in **`config/shared.env`**; `bin/compose` writes
+  **`config/compose.env`** for interpolation only (`config/env.yml` lists
+  `shared_secrets: [.common.env]`)
+- **No package-cache re-injection in bins or compose `environment`:** drop
+  `MISE_TRUSTED_CONFIG_PATHS` from `x-work-env` (image defaults to `/work`);
+  refresh installed `bin/warm` / `docker-app` / `cache-env` / etc. so they do not
+  export `BUNDLE_*` / `YARN_*` / `MISE_*` (ubuntu-mise owns `/cache` layout)
+
 ### Fixed
+
+- Fresh Postgres volume boot: wait uses `pg_isready` (maintenance DB) before `db:prepare` (via rematerialized `bin/docker-app` from cluster-tasks)
 
 ### Security
 
@@ -28,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Prefer **`work/`** as the example clone/directory name (Compose project basename); drop `wf` naming in docs and root `package.json`
-- Default post-warm / setup next step: **`task up:all`** (single-app `up:fred` still available)
+- Default post-warm / setup next step: **`task up:all`** (or `task up -- <app>`)
 - `bin/warm`: skip `bundle cache --all-platforms` when already satisfied
   (`WARM_FORCE_CACHE=1` to always refresh `/cache/rubygems`)
 - `bin/warm` bundles root + `config/apps.yml` apps only (not shared-gem Gemfiles)

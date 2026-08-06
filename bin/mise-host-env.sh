@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Managed by cluster-tasks install — standalone copy (no sibling required)
 # Emit `export KEY=val` lines for mise `[env] _.source`.
 # Fills gaps only — never clobbers a value already set in the shell.
 # Same contract as ubuntu-mise / ubuntu-sample.

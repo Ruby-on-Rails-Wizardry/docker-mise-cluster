@@ -1,0 +1,208 @@
+# Vendored by cluster-tasks install — refresh with bin/install
+# Host UX from cluster-tasks (include with flatten: true from the consumer).
+# Requires Task: https://taskfile.dev — install via consumer mise or host.
+# bin/* implements the same commands without Task.
+#
+# App list always comes from config/apps.yml (bin/apps) — no hard-coded names.
+# Consumer wires with:  ../cluster-tasks/bin/wire
+#
+# Prebuilt base only: IMAGE=ubuntu-mise:dev (pull_policy: never).
+#   cd ../ubuntu-mise && task build
+#   task warm
+#   task up:all
+#   task up -- app1 app2
+#
+# Shared volume `cache` → /cache. Compose project name = directory basename.
+
+version: "3"
+
+env:
+  FLAVOR_BASE: ubuntu-mise
+  IMAGE: '{{.IMAGE | default "ubuntu-mise:dev"}}'
+  CACHE_VOLUME: '{{.CACHE_VOLUME | default "cache"}}'
+  PROJECT:
+    sh: 'printf %s "${PROJECT:-{{.USER_WORKING_DIR}}}"'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  config:
+    desc: Print effective image / volume / project settings
+    cmds:
+      - ./bin/config
+
+  doctor:
+    desc: Host / Docker / base image / apps / nginx sanity
+    cmds:
+      - ./bin/doctor
+
+  wire:
+    desc: "Wire sibling cluster-tasks (wrappers). Prefer: task install -- --yes for standalone"
+    cmds:
+      - |
+        set -euo pipefail
+        ct="${CLUSTER_TASKS_ROOT:-}"
+        if [[ -z "${ct}" ]]; then
+          ct="$(cd ../cluster-tasks 2>/dev/null && pwd)" || true
+        fi
+        if [[ -z "${ct}" || ! -x "${ct}/bin/wire" ]]; then
+          echo "error: set CLUSTER_TASKS_ROOT or clone cluster-tasks as ../cluster-tasks" >&2
+          exit 1
+        fi
+        "${ct}/bin/wire" {{.CLI_ARGS}} .
+
+  install:
+    desc: "Install cluster-tasks standalone into this project (task install -- --yes)"
+    cmds:
+      - |
+        set -euo pipefail
+        ct="${CLUSTER_TASKS_ROOT:-}"
+        if [[ -z "${ct}" ]]; then
+          ct="$(cd ../cluster-tasks 2>/dev/null && pwd)" || true
+        fi
+        if [[ -z "${ct}" || ! -x "${ct}/bin/install" ]]; then
+          if [[ -x ./bin/install ]]; then
+            ./bin/install {{.CLI_ARGS}} .
+            exit 0
+          fi
+          echo "error: set CLUSTER_TASKS_ROOT or clone cluster-tasks as ../cluster-tasks" >&2
+          exit 1
+        fi
+        "${ct}/bin/install" {{.CLI_ARGS}} .
+
+  setup:
+    desc: "Ensure image (optional) + warm cache (task setup -- --docker-build)"
+    cmds:
+      - ./bin/setup {{.CLI_ARGS}}
+
+  warm:
+    desc: Warm volume cache (apps from config/apps.yml inside the image)
+    cmds:
+      - ./bin/warm
+
+  cache:ensure:
+    desc: Create the shared /cache volume
+    aliases: [cache]
+    cmds:
+      - ./bin/cache-ensure
+
+  cache:env:
+    desc: "Print or write cache env (task cache:env -- --write → config/cache.env)"
+    cmds:
+      - ./bin/cache-env {{.CLI_ARGS}}
+
+  env:files:
+    desc: "Env layers status/write (task env:files -- status|write) — docs/ENV.md"
+    cmds:
+      - ./bin/env-files {{.CLI_ARGS}}
+
+  cache:reset:
+    desc: "Delete shared /cache volume (task cache:reset -- -y)"
+    cmds:
+      - ./bin/cache-reset {{.CLI_ARGS}}
+
+  bootboot:nuke:
+    desc: "Remove installed bootboot plugins/isolate dirs (task bootboot:nuke -- -y)"
+    cmds:
+      - ./bin/nuke-bootboot {{.CLI_ARGS}}
+
+  local-gem:
+    desc: "Shared gem path overrides — task local-gem -- status|enable|disable|env"
+    cmds:
+      - ./bin/local-gem {{.CLI_ARGS}}
+
+  compose:
+    desc: "Pass-through to bin/compose (task compose -- ps)"
+    cmds:
+      - ./bin/compose {{.CLI_ARGS}}
+
+  compose:config:
+    desc: Show resolved cluster compose config
+    cmds:
+      - ./bin/compose config
+
+  up:
+    desc: "bin/compose up — task up -- app1 app2 (names from apps.yml)"
+    interactive: true
+    cmds:
+      - ./bin/compose up {{.CLI_ARGS}}
+
+  up:all:
+    desc: Bring up all apps from config/apps.yml + shared deps
+    interactive: true
+    cmds:
+      - |
+        set -euo pipefail
+        apps="$(./bin/apps names-oneline)"
+        if [[ -z "${apps// }" ]]; then
+          echo "error: no apps in config/apps.yml" >&2
+          exit 1
+        fi
+        echo "up:all → ${apps}"
+        ./bin/compose up ${apps}
+
+  down:
+    desc: bin/compose down
+    cmds:
+      - ./bin/compose down {{.CLI_ARGS}}
+
+  apps:
+    desc: Show apps from config/apps.yml
+    cmds:
+      - ./bin/apps yaml
+
+  db:
+    desc: Start only Postgres + Redis
+    cmds:
+      - ./bin/compose up -d db redis
+
+  db:reset:
+    desc: "Reset app DB(s) — task db:reset -- app1 app2"
+    cmds:
+      - ./bin/db-reset {{.CLI_ARGS}}
+
+  shell:dev:
+    desc: Interactive shell in ubuntu-mise:dev (compose profile dev)
+    interactive: true
+    cmds:
+      - ./bin/compose --profile dev run --rm dev
+
+  # Delegate into an app submodule: task app -- NAME setup|shell|…
+  app:
+    desc: "Run Task in app dir — task app -- NAME <task…>"
+    cmds:
+      - |
+        set -euo pipefail
+        # shellcheck disable=SC2086
+        set -- {{.CLI_ARGS}}
+        if [[ $# -lt 1 ]]; then
+          echo "usage: task app -- <app-name> <task> [args…]" >&2
+          echo "apps: $(./bin/apps names-oneline)" >&2
+          exit 1
+        fi
+        app="$1"
+        shift
+        if [[ ! -d "${app}" ]]; then
+          echo "error: no directory ./${app}" >&2
+          exit 1
+        fi
+        if [[ $# -eq 0 ]]; then
+          (cd "${app}" && task --list)
+        else
+          (cd "${app}" && task "$@")
+        fi
+
+  mise:install:
+    desc: Install tools from mise.toml (includes Task)
+    cmds:
+      - |
+        if command -v mise >/dev/null 2>&1; then
+          mise trust . 2>/dev/null || true
+          mise install
+        else
+          echo "error: mise not found" >&2
+          exit 1
+        fi

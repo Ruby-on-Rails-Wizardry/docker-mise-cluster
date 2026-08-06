@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Managed by cluster-tasks install — standalone copy (no sibling required)
+# Install cluster-tasks into a consumer as standalone copies (no sibling runtime dependency).
+#
+# Unlike wire (thin wrappers → ../cluster-tasks), install copies every bin + lib.sh
+# and vendors the Taskfile so the project works if cluster-tasks is absent.
+#
+# Usage (from the consumer cluster root):
+#   ../cluster-tasks/bin/install --yes
+#   ../cluster-tasks/bin/install /path/to/work --yes
+#
+# Re-run after upgrading cluster-tasks to refresh copies.
+# For day-to-day live development against a sibling checkout, use bin/wire instead.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "${ROOT}/wire" --install "$@"

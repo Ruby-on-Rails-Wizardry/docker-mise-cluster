@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
+# Managed by cluster-tasks install — standalone copy (no sibling required)
 # Reset one or more app databases (drop + create + schema + seed).
 #
 # Reads app names and database= from config/apps.yml. Other apps' DBs are
 # left alone (Postgres is shared; only the named database is reset).
 #
 # Usage:
-#   bin/db-reset fred
-#   bin/db-reset george
-#   bin/db-reset fred george
-#   bin/db-reset --docker fred     # rails via compose (app service network)
-#   bin/db-reset --host fred       # rails on the host (default when possible)
+#   bin/db-reset APP
+#   bin/db-reset APP1 APP2
+#   bin/db-reset --docker APP      # rails via compose (app service network)
+#   bin/db-reset --host APP        # rails on the host (default when possible)
 #
 # Prerequisites:
 #   - Postgres up (this script starts `db` if needed)
@@ -55,8 +55,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ${#APPS[@]} -eq 0 ]]; then
-  echo "error: specify at least one app name (e.g. fred, george)" >&2
-  echo "Known apps: $("${ROOT}/bin/apps" names | tr '\n' ' ')" >&2
+  echo "error: specify at least one app name from config/apps.yml" >&2
+  echo "Known apps: $("${ROOT}/bin/apps" names-oneline 2>/dev/null || true)" >&2
   exit 1
 fi
 
@@ -80,17 +80,28 @@ pg_user="${POSTGRES_USER:-cluster}"
 pg_pass="${POSTGRES_PASSWORD:-cluster}"
 pg_port="${POSTGRES_PUBLISH_PORT:-5432}"
 
-# Load compose-adjacent .env if present (non-fatal).
-if [[ -f "${ROOT}/.env" ]]; then
-  # shellcheck disable=SC1091
+# Host env layers (docs/ENV.md). Do not manage/overwrite .env.
+# Later files override earlier for the same key when both set values.
+#   config/compose.env — compose interpolation defaults (POSTGRES_*, …)
+#   config/shared.env  — shared non-secrets
+#   .common.env        — shared secrets (vault)
+#   .env               — optional user override only (we never write it)
+load_env_file() {
+  local f="$1"
+  [[ -f "$f" ]] || return 0
+  # shellcheck disable=SC1090
   set -a
   # shellcheck source=/dev/null
-  source "${ROOT}/.env"
+  source "$f"
   set +a
-  pg_user="${POSTGRES_USER:-$pg_user}"
-  pg_pass="${POSTGRES_PASSWORD:-$pg_pass}"
-  pg_port="${POSTGRES_PUBLISH_PORT:-$pg_port}"
-fi
+}
+load_env_file "${ROOT}/config/compose.env"
+load_env_file "${ROOT}/config/shared.env"
+load_env_file "${ROOT}/.common.env"
+load_env_file "${ROOT}/.env"
+pg_user="${POSTGRES_USER:-$pg_user}"
+pg_pass="${POSTGRES_PASSWORD:-$pg_pass}"
+pg_port="${POSTGRES_PUBLISH_PORT:-$pg_port}"
 
 host_database_url() {
   local db_name="$1"
@@ -125,9 +136,8 @@ can_host_rails() {
   [[ -d "${ROOT}/${app_path}" ]] || return 1
   [[ -f "${ROOT}/${app_path}/bin/rails" ]] || return 1
   # Prefer host when bundler can see the app (after bin/setup).
+  # Do not inject package-cache ENV — host gems are host-local, not /cache.
   (
-    # shellcheck source=bin/cache-env
-    source "${ROOT}/bin/cache-env"
     cd "${ROOT}/${app_path}"
     command -v bundle >/dev/null 2>&1 && bundle check >/dev/null 2>&1
   )
@@ -139,8 +149,6 @@ reset_host() {
   url="$(host_database_url "${db_name}")"
 
   echo "== ${name}: rails db:reset (host) DATABASE_URL=…/${db_name}"
-  # shellcheck source=bin/cache-env
-  source "${ROOT}/bin/cache-env"
   (
     cd "${ROOT}/${path}"
     export DATABASE_URL="${url}"
@@ -165,15 +173,19 @@ reset_docker() {
   echo "== ${name}: rails db:reset (docker service ${name}) DATABASE_URL=…@db/${db_name}"
   # Use the app service definition (same image/env as compose) without starting the web server.
   # --no-deps: db already ensured; avoid pulling nginx/redis for a DB-only task.
+  local wm="${WORK_MOUNT:-/work}"
   "${ROOT}/bin/compose" run --rm --no-deps \
     -e "DATABASE_URL=${url}" \
     -e "RAILS_ENV=${RAILS_ENV:-development}" \
-    -w "/work/${path}" \
+    -e "WORK_MOUNT=${wm}" \
+    -e "WORKSPACE=${wm}" \
+    -w "${wm}/${path}" \
     "${name}" \
     bash -lc '
       set -euo pipefail
+      wm="${WORK_MOUNT:-/work}"
       if command -v mise >/dev/null 2>&1; then
-        mise trust /work 2>/dev/null || true
+        mise trust "${wm}" 2>/dev/null || true
         mise trust . 2>/dev/null || true
         eval "$(mise activate bash)" 2>/dev/null || true
         mise install >/dev/null

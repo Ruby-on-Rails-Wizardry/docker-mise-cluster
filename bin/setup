@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Managed by cluster-tasks install — standalone copy (no sibling required)
 # Bootstrap this cluster after clone (idempotent).
 #
 #   1. Optional: ensure ubuntu-mise:dev (--docker-build)
@@ -54,12 +55,29 @@ step "Apps from config/apps.yml"
 step "Per-app .bundle/config (private copies; not a shared symlink)"
 "${ROOT}/bin/ensure-bundle-config"
 
-step "Shared gem local overrides (bundle config local.* for path checkouts)"
-# shellcheck disable=SC1090
-eval "$("${ROOT}/bin/local-gem-env")"
-"${ROOT}/bin/local-gem-env" --print | while IFS= read -r line; do
-  echo "  ${line}"
-done
+step "Shared gem local overrides (BUNDLE_LOCAL__* path checkouts)"
+# Off when .local-gems.disabled or LOCAL_GEMS=0 (see bin/local-gem / docs/LOCAL-GEMS.md).
+_local_gems_on=1
+case "${LOCAL_GEMS:-}" in
+  0|false|FALSE|off|OFF|no|NO) _local_gems_on=0 ;;
+  1|true|TRUE|on|ON|yes|YES) _local_gems_on=1 ;;
+  *)
+    if [[ -f "${ROOT}/.local-gems.disabled" ]]; then
+      _local_gems_on=0
+    fi
+    ;;
+esac
+if [[ "${_local_gems_on}" -eq 1 && -x "${ROOT}/bin/local-gem-env" ]]; then
+  # shellcheck disable=SC1090
+  eval "$("${ROOT}/bin/local-gem-env")"
+  "${ROOT}/bin/local-gem-env" --print | while IFS= read -r line; do
+    echo "  ${line}"
+  done
+elif [[ "${_local_gems_on}" -eq 0 ]]; then
+  echo "  DISABLED (bin/local-gem enable to turn on)"
+else
+  echo "  (no local-gem-env)"
+fi
 
 if [[ "$DOCKER_BUILD" -eq 1 ]]; then
   step "Ensuring base image ${IMAGE}"
@@ -95,4 +113,13 @@ fi
 
 step "Done"
 echo "Next: task up:all"
-echo "      http://localhost:8080/   (/fred/ /ron/ /harry/ /george/)"
+if [[ -x "${ROOT}/bin/apps" ]]; then
+  roots="$("${ROOT}/bin/apps" url-roots 2>/dev/null || true)"
+  if [[ -n "${roots}" ]]; then
+    echo "      http://localhost:8080/   (${roots})"
+  else
+    echo "      http://localhost:8080/"
+  fi
+else
+  echo "      http://localhost:8080/"
+fi

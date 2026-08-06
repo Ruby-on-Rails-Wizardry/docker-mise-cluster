@@ -24,7 +24,7 @@ Reference trees (do not treat as the product):
 | **Container user** | Baked into **ubuntu-mise** at **build**; compose does **not** pass user/UID at run time |
 | **Cache** | One Docker volume named **`cache`** → `/cache`; fill with **`task warm`** (crawl Gemfile / package.json) |
 | **Production deploy** | **N Kamal apps, one VPS** (Approach A): each app has its own image + `config/deploy.yml`; **kamal-proxy** routes by **hostname**. Not `docker compose` of this cluster in prod. |
-| Host UX | Cluster + each app: **mise** + **Task** like ubuntu-sample (`.mise.env` with `POSTGRESQL_VERSION`, `bin/*`, mirrored tasks). Cluster orchestrates multi-app + **nginx** path routing. |
+| Host UX | **Sibling [cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** (`../cluster-tasks`) wired with `bin/wire` → Task include + host wrappers + materialized in-container bins. Cluster + each app: **mise** + **Task** (`.mise.env`). Orchestrates multi-app + **nginx** path routing. |
 | Yarn | **Classic 1.22.x** (not Berry) |
 | MVP services | Image + compose + shared gem/yarn caches + nginx + Postgres + Redis |
 | Apply to a real project | New `work/` tree; leave `partial/` as reference only |
@@ -72,20 +72,48 @@ git push github && git push gitlab && git push ami
 Create a new ami bare (as root on the LAN host):  
 `ssh root@ami /srv/git/bin/create-repo Ruby-on-Rails-Wizardry/REPO`
 
+## Sibling tooling (cluster-tasks)
+
+Host orchestration lives in a **sibling** clone, not nested under this repo:
+
+```text
+Ruby-on-Rails-Wizardry/
+├── cluster-tasks/          # bin/wire, warm, doctor, Taskfile library
+├── docker-mise-cluster/    # this tree (or work/)
+└── ubuntu-mise/            # optional — build IMAGE
+```
+
+```bash
+# From this repo root (after cloning ../cluster-tasks)
+../cluster-tasks/bin/wire --yes   # or: task wire -- --yes
+task doctor
+task warm
+task up:all
+```
+
+| Kind | Scripts | Why |
+|------|---------|-----|
+| **Host wrappers** | `compose`, `warm`, `setup`, `doctor`, … | Thin exec → `../cluster-tasks/bin/*` |
+| **Materialized** | `docker-app`, `apps`, `local-gem-env` | Real files under `/work/bin` for containers |
+| **Task** | `Taskfile.yml` includes sibling with `flatten: true` | One namespace of tasks |
+
+`wire` is **idempotent**. Re-run after updating cluster-tasks. Do **not** nest cluster-tasks as a submodule of this tree.
+
 ## Rules
 
-1. **One cache:** volume **`cache`** → `/cache` (image ENV for mise/bundle/yarn). Warm with **`bin/warm`**. Do not reintroduce host `.cache` dual paths.
+1. **One cache:** volume **`cache`** → `/cache` (image ENV for mise/bundle/yarn). Warm with **`bin/warm`** / **`task warm`**. Do not reintroduce host `.cache` dual paths.
 2. App list only in **`config/apps.yml`**; `bin/setup` and `bin/apps` read it. Keep **`compose.yml`** and **`nginx/`** in sync (`port`, `url_root`, DB). Shared app shape: `x-app`. DBs via Rails `db:prepare`.
-3. Bundler defaults in **`config/bundler-flags.yml`**; each app gets a **private** `<app>/.bundle/` (config + local plugins). Seed config via `bin/ensure-bundle-config`. Do **not** share one `.bundle` across apps — with `BUNDLE_PATH` set, bootboot installs under `<app>/.bundle/plugin`.
-4. Do **not** set `BUNDLE_APP_CONFIG` to the cluster root when running app Gemfiles. Install paths come from ENV (`BUNDLE_PATH` / `/cache`). Warm: skip `Gemfile_next.lock` dual-sync by default; auto-isolate `BUNDLE_PATH` per app when bootboot is detected (`WARM_ISOLATE_BUNDLE`, `WARM_SKIP_NEXT_LOCK`).
+3. Bundler defaults in **`config/bundler-flags.yml`**; each app gets a **private** `<app>/.bundle/` (config + local plugins). Seed config via `bin/ensure-bundle-config`. Do **not** share one `.bundle` across apps — with `BUNDLE_PATH` set, bootboot installs under `<app>/.bundle/plugin`. Keep **`BUNDLE_CLEAN=false`** when apps share `BUNDLE_PATH` (wire enforces this).
+4. Do **not** set `BUNDLE_APP_CONFIG` to the cluster root when running app Gemfiles. Install paths come from **ubuntu-mise** (image ENV + `~/.bundle/config` under `/cache`) — do **not** re-export `BUNDLE_*` / `YARN_*` / `MISE_*` in cluster bins or compose. Warm: skip `Gemfile_next.lock` dual-sync by default; auto-isolate `BUNDLE_PATH` per app when bootboot is detected (`WARM_ISOLATE_BUNDLE`, `WARM_SKIP_NEXT_LOCK`).
 5. Prefer `bundle install --local` / yarn `--offline` before network.
-6. Image user is set at **ubuntu-mise build** only (host `$USER` / UID / GID). Project mount / WORKDIR is **`/work`**. Cache/mise/bundle/yarn paths come from **ubuntu-mise image ENV** — do not re-declare them in cluster compose. Do **not** pass `user:` / `IMAGE_USER` / `DEV_UID` at cluster run time.
+6. Image user is set at **ubuntu-mise build** only (host `$USER` / UID / GID). Project mount / WORKDIR is **`/work`**. Cache/mise/bundle/yarn paths come from **ubuntu-mise image ENV + user configs** — do not re-declare them in cluster compose or `bin/warm` / `docker-app`. Do **not** pass `user:` / `IMAGE_USER` / `DEV_UID` at cluster run time.
 7. Do not commit `.cache/**` contents.
 8. Do not introduce Yarn Berry in this template.
 9. Nginx is path routing only (**dev**). Do not reintroduce oauth2 here unless explicitly requested. Production uses **hostname** routing via kamal-proxy, not these path prefixes.
 10. Dev Postgres/Redis credentials stay in compose / `.env.example` only — never real secrets. Wire apps with compose `DATABASE_URL` / `REDIS_URL`; DBs created by Rails if missing.
 11. **Mise install timing:** development → **runtime** + `/cache`; production → **image build** only (see Decisions table). Do not bake language toolchains into the cluster **dev** image build; do not run `mise install` on production boot.
 12. **Do not** treat this compose stack as production. Deploy each app with **Kamal** from its app repo.
+13. **Host tooling** comes from sibling **cluster-tasks** via `wire` — edit sources there, re-wire; do not hand-edit managed wrappers or materialized bins.
 
 ## Production deployment (Kamal — not compose)
 
@@ -154,11 +182,10 @@ Apps `depends_on` db/redis/nginx for start order. `bin/docker-app` waits for Pos
 Shared Postgres; only the named app’s database is dropped/recreated (`config/apps.yml` → `database:`).
 
 ```bash
-task db:reset:fred             # or: bin/db-reset fred
-task db:reset:ron
-task db:reset -- fred ron      # multiple
-bin/db-reset --docker harry    # force rails via compose
-bin/db-reset --host george     # force host rails (after bin/setup)
+task db:reset -- app1          # or: bin/db-reset app1
+task db:reset -- app1 app2     # multiple
+bin/db-reset --docker app1     # force rails via compose
+bin/db-reset --host app1       # force host rails (after bin/setup)
 ```
 
 `bin/setup --reset` still resets **all** apps during full host setup.
@@ -168,12 +195,16 @@ bin/db-reset --host george     # force host rails (after bin/setup)
 ```bash
 mise install                   # Task on host
 cd ../ubuntu-mise && task build && cd -
+# first time / after cluster-tasks update:
+../cluster-tasks/bin/wire --yes   # or: task wire -- --yes
+task doctor
 task warm                      # volume cache → /cache
-task up:all                    # or up:fred
-task db:reset:fred
+task up:all                    # or: task up -- <app>
+task db:reset -- <app>
 task compose -- ps
 task shell:dev
 task apps
+task app -- <app> setup        # delegate into app Taskfile
 ```
 
-`bin/*` remains the implementation; Task is optional host UX (same pattern as ubuntu-mise).
+Implementation: **cluster-tasks** `bin/*` (host wrappers + materialized in-container scripts). Task is the optional host UX (same pattern as ubuntu-mise).
