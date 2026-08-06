@@ -1,146 +1,59 @@
 #!/usr/bin/env bash
 # Managed by cluster-tasks install — standalone copy (no sibling required)
 # Start a Rails app inside the Ubuntu+mise dev container.
-# Prefer a prior `bin/warm` so gems/yarn/mise are already on the cache volume.
-
+#
+# 1. bin/docker-prepare  — mise, bundle, yarn, wait DB, migrate, optional hook
+# 2. exec long-running process (rails server, or foreman if a Procfile is set)
+#
+# Prefer a prior `bin/warm` / `bin/reheat` so prepare is mostly a no-op at boot.
 set -euo pipefail
 
 PORT="${PORT:-3000}"
 APP_NAME="$(basename "$(pwd)")"
 
-# Project root inside the container (bind mount). Override: WORK_MOUNT or WORKSPACE.
 WORK_MOUNT="${WORK_MOUNT:-${WORKSPACE:-/work}}"
 export WORK_MOUNT
 export WORKSPACE="${WORKSPACE:-${WORK_MOUNT}}"
 CLUSTER_ROOT="${WORKSPACE}"
-if [[ ! -f "${CLUSTER_ROOT}/bin/docker-app" ]]; then
+if [[ ! -f "${CLUSTER_ROOT}/bin/docker-prepare" && ! -f "${CLUSTER_ROOT}/bin/docker-app" ]]; then
   CLUSTER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fi
 
-# Package-cache paths (BUNDLE_*/YARN_*/MISE_*) come from ubuntu-mise image —
-# do not re-export them. Dev: mise at runtime.
-if command -v mise >/dev/null 2>&1; then
-  mise trust "${CLUSTER_ROOT}" 2>/dev/null || true
-  mise trust . 2>/dev/null || true
-  eval "$(mise activate bash)" 2>/dev/null || true
-  echo "== ${APP_NAME}: mise install (cache MISE_DATA_DIR=${MISE_DATA_DIR:-/cache/mise})"
-  (cd "${CLUSTER_ROOT}" && mise install) || mise install
-  mise reshim 2>/dev/null || true
-  eval "$(mise activate bash)" 2>/dev/null || true
+PREPARE="${CLUSTER_ROOT}/bin/docker-prepare"
+if [[ ! -x "${PREPARE}" ]]; then
+  PREPARE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/docker-prepare"
+fi
+if [[ ! -x "${PREPARE}" ]]; then
+  echo "error: ${APP_NAME}: docker-prepare not found (re-run cluster-tasks wire/install)" >&2
+  exit 1
 fi
 
-# Shared gems: Gemfile pins published version; local path for cluster checkout.
-# Off when .local-gems.disabled or LOCAL_GEMS=0|false|off (see bin/local-gem).
-_local_gems_on=1
-case "${LOCAL_GEMS:-}" in
-  0|false|FALSE|off|OFF|no|NO) _local_gems_on=0 ;;
-  1|true|TRUE|on|ON|yes|YES) _local_gems_on=1 ;;
-  *)
-    if [[ -f "${CLUSTER_ROOT}/.local-gems.disabled" ]]; then
-      _local_gems_on=0
+echo "== ${APP_NAME}: docker-prepare"
+# shellcheck disable=SC1090
+# Run as a process (not source) so set -e / cwd stay predictable.
+"${PREPARE}"
+
+# Long-running process: foreman when a Procfile is available, else rails server.
+PROCFILE="${PROCFILE:-}"
+if [[ -z "${PROCFILE}" ]]; then
+  for candidate in Procfile.wf Procfile.dev Procfile; do
+    if [[ -f "${candidate}" ]]; then
+      PROCFILE="${candidate}"
+      break
     fi
-    ;;
-esac
-if [[ "${_local_gems_on}" -eq 1 && -x "${CLUSTER_ROOT}/bin/local-gem-env" ]]; then
-  # shellcheck disable=SC1090
-  eval "$("${CLUSTER_ROOT}/bin/local-gem-env" "${WORK_MOUNT}")"
-elif [[ "${_local_gems_on}" -eq 0 ]]; then
-  echo "== ${APP_NAME}: local gem overrides DISABLED"
-fi
-
-echo "== ${APP_NAME}: BUNDLE_PATH=${BUNDLE_PATH:-/cache/bundle}"
-echo "== ${APP_NAME}: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH:-/cache/rubygems}"
-echo "== ${APP_NAME}: YARN_CACHE_FOLDER=${YARN_CACHE_FOLDER:-/cache/yarn-cache}"
-echo "== ${APP_NAME}: ruby $(ruby -v 2>/dev/null || echo missing)"
-echo "== ${APP_NAME}: yarn $(yarn --version 2>/dev/null || echo unknown)"
-
-if bundle check >/dev/null 2>&1; then
-  echo "== ${APP_NAME}: bundle already satisfied"
-else
-  echo "== ${APP_NAME}: bundle install (prefer local gem cache)"
-  if ! bundle install --local; then
-    echo "== ${APP_NAME}: local cache incomplete; fetching missing gems"
-    if ! bundle install; then
-      echo "== ${APP_NAME}: retry bundle install" >&2
-      sleep 1
-      bundle install
-    fi
-  fi
-fi
-
-if [[ -f "${CLUSTER_ROOT}/package.json" ]] && [[ -f "${CLUSTER_ROOT}/yarn.lock" ]]; then
-  if [[ ! -d "${CLUSTER_ROOT}/node_modules" ]]; then
-    echo "== ${APP_NAME}: yarn install"
-    (
-      cd "${CLUSTER_ROOT}"
-      yarn install --frozen-lockfile --prefer-offline 2>/dev/null || \
-        yarn install --frozen-lockfile || \
-        echo "== ${APP_NAME}: warning: yarn install failed; continuing" >&2
-    ) || true
-  else
-    echo "== ${APP_NAME}: node_modules present; skipping yarn install"
-  fi
-fi
-
-redact_url() {
-  sed -E 's#(://[^:/@]+:)[^@]+@#\1***@#' <<<"${1:-}"
-}
-
-if [[ -n "${DATABASE_URL:-}" ]]; then
-  echo "== ${APP_NAME}: DATABASE_URL=$(redact_url "${DATABASE_URL}")"
-elif [[ -n "${POSTGRES_HOST:-}" ]]; then
-  echo "== ${APP_NAME}: POSTGRES_HOST=${POSTGRES_HOST} POSTGRES_USER=${POSTGRES_USER:-}"
-else
-  echo "== ${APP_NAME}: warning: no DATABASE_URL or POSTGRES_HOST" >&2
-fi
-
-wait_for_postgres() {
-  # Readiness only — do not open the app database. On a fresh volume the app DB
-  # does not exist until rails db:prepare below; connecting via ActiveRecord
-  # would always fail until then.
-  local attempts="${1:-30}"
-  local i
-  local host="${POSTGRES_HOST:-db}"
-  local user="${POSTGRES_USER:-cluster}"
-  local port="${POSTGRES_PORT:-5432}"
-
-  if [[ -n "${DATABASE_URL:-}" ]]; then
-    # postgresql://user:pass@host:port/db  or  postgresql://user@host/db
-    if [[ "${DATABASE_URL}" =~ @([^:/]+)(:([0-9]+))?/ ]]; then
-      host="${BASH_REMATCH[1]}"
-      [[ -n "${BASH_REMATCH[3]:-}" ]] && port="${BASH_REMATCH[3]}"
-    fi
-    if [[ "${DATABASE_URL}" =~ ://([^:/@]+) ]]; then
-      user="${BASH_REMATCH[1]}"
-    fi
-  fi
-
-  for ((i = 1; i <= attempts; i++)); do
-    if command -v pg_isready >/dev/null 2>&1 && \
-      pg_isready -h "${host}" -p "${port}" -U "${user}" -d postgres >/dev/null 2>&1; then
-      return 0
-    fi
-    echo "== ${APP_NAME}: waiting for PostgreSQL (${i}/${attempts})…"
-    sleep 2
   done
-  echo "error: ${APP_NAME}: could not connect to PostgreSQL (${host}:${port})" >&2
-  return 1
-}
+fi
 
-wait_for_postgres 30
+rm -f tmp/pids/server.pid 2>/dev/null || true
 
-echo "== ${APP_NAME}: bin/rails db:prepare"
-bin/rails db:prepare
+if [[ -n "${PROCFILE}" ]] && command -v foreman >/dev/null 2>&1; then
+  echo "== ${APP_NAME}: foreman start -f ${PROCFILE}"
+  exec foreman start -f "${PROCFILE}"
+fi
 
-bin/rails runner '
-  cfg = ActiveRecord::Base.connection_db_config
-  adapter = cfg.adapter.to_s
-  db = cfg.database.to_s
-  host = cfg.try(:host).to_s
-  puts "== '"${APP_NAME}"': ActiveRecord adapter=#{adapter} database=#{db} host=#{host}"
-  abort "error: expected postgresql adapter, got #{adapter.inspect}" unless adapter == "postgresql"
-  current = ActiveRecord::Base.connection.select_value("SELECT current_database()")
-  puts "== '"${APP_NAME}"': connected to PostgreSQL database=#{current}"
-'
+if [[ -n "${PROCFILE}" ]] && ! command -v foreman >/dev/null 2>&1; then
+  echo "== ${APP_NAME}: ${PROCFILE} present but foreman not on PATH; using rails server" >&2
+fi
 
+echo "== ${APP_NAME}: rails server -b 0.0.0.0 -p ${PORT}"
 exec bin/rails server -b 0.0.0.0 -p "${PORT}"

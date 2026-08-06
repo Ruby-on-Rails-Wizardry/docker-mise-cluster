@@ -132,20 +132,22 @@ else
   warn=1
 fi
 
-# docker-app must be a real file under the project (not a wrapper to a sibling)
-if [[ -f "${ROOT}/bin/docker-app" ]]; then
-  if head -8 "${ROOT}/bin/docker-app" 2>/dev/null | grep -qE 'materialized for in-container|Managed by cluster-tasks install'; then
-    printf 'OK   bin/docker-app is a real script under /work\n'
-  elif head -8 "${ROOT}/bin/docker-app" 2>/dev/null | grep -q 'exec "\${CLUSTER_TASKS_ROOT}/bin/docker-app"'; then
-    printf 'WARN bin/docker-app is a host wrapper — re-run wire, or use install --yes for standalone\n'
-    warn=1
+# docker-app / docker-prepare must be real files under the project (containers).
+for script in docker-app docker-prepare; do
+  if [[ -f "${ROOT}/bin/${script}" ]]; then
+    if head -12 "${ROOT}/bin/${script}" 2>/dev/null | grep -qE 'materialized for in-container|Managed by cluster-tasks install|Prepare one Rails app|Start a Rails app'; then
+      printf 'OK   bin/%s is a real script under /work\n' "${script}"
+    elif head -8 "${ROOT}/bin/${script}" 2>/dev/null | grep -q "CLUSTER_TASKS_ROOT.*/bin/${script}"; then
+      printf 'WARN bin/%s is a host wrapper — re-run wire, or use install --yes\n' "${script}"
+      warn=1
+    else
+      printf 'OK   bin/%s present\n' "${script}"
+    fi
   else
-    printf 'OK   bin/docker-app present\n'
+    printf 'FAIL bin/%s missing (required for compose / reheat)\n' "${script}"
+    fail=1
   fi
-else
-  printf 'FAIL bin/docker-app missing (required for compose app command)\n'
-  fail=1
-fi
+done
 
 if [[ -f "${ROOT}/.cluster-tasks.env" ]]; then
   printf 'OK   .cluster-tasks.env present (wire)\n'

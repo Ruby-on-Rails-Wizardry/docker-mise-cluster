@@ -67,6 +67,7 @@ CLUSTER_TASKS_ROOT="$(cd "${CLUSTER_TASKS_ROOT:-$TOOLS_ROOT}" && pwd)"
 # install mode copies these plus all host tools (full list below).
 MATERIALIZE=(
   docker-app
+  docker-prepare
   local-gem-env
   apps
 )
@@ -75,6 +76,7 @@ MATERIALIZE=(
 HOST_WRAP=(
   compose
   warm
+  reheat
   setup
   doctor
   db-reset

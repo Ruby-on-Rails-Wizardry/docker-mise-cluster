@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# Managed by cluster-tasks install — standalone copy (no sibling required)
+# Prepare one Rails app inside the ubuntu-mise container, then exit.
+# Does not start the web server (see bin/docker-app for prepare + serve).
+#
+# Used by:
+#   bin/docker-app          — prepare then exec server
+#   bin/reheat              — sequential prepare per app (avoid shared-cache locks)
+#   compose run --rm APP …  — one-shot prepare
+#
+# Optional app hook (cwd = app root):
+#   bin/after-docker-prepare   — run if present and executable, after DB prepare
+#
+# Package-cache paths come from ubuntu-mise image — do not re-export them.
+set -euo pipefail
+
+APP_NAME="$(basename "$(pwd)")"
+
+# Project root inside the container (bind mount). Override: WORK_MOUNT or WORKSPACE.
+WORK_MOUNT="${WORK_MOUNT:-${WORKSPACE:-/work}}"
+export WORK_MOUNT
+export WORKSPACE="${WORKSPACE:-${WORK_MOUNT}}"
+CLUSTER_ROOT="${WORKSPACE}"
+if [[ ! -f "${CLUSTER_ROOT}/bin/docker-prepare" && ! -f "${CLUSTER_ROOT}/bin/docker-app" ]]; then
+  CLUSTER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
+
+# --- mise --------------------------------------------------------------------
+if command -v mise >/dev/null 2>&1; then
+  mise trust "${CLUSTER_ROOT}" 2>/dev/null || true
+  mise trust . 2>/dev/null || true
+  eval "$(mise activate bash)" 2>/dev/null || true
+  echo "== ${APP_NAME}: mise install (cache MISE_DATA_DIR=${MISE_DATA_DIR:-/cache/mise})"
+  (cd "${CLUSTER_ROOT}" && mise install) || mise install
+  mise reshim 2>/dev/null || true
+  eval "$(mise activate bash)" 2>/dev/null || true
+fi
+
+# --- shared library gems (path vs published) ---------------------------------
+_local_gems_on=1
+case "${LOCAL_GEMS:-}" in
+  0|false|FALSE|off|OFF|no|NO) _local_gems_on=0 ;;
+  1|true|TRUE|on|ON|yes|YES) _local_gems_on=1 ;;
+  *)
+    if [[ -f "${CLUSTER_ROOT}/.local-gems.disabled" ]]; then
+      _local_gems_on=0
+    fi
+    ;;
+esac
+if [[ "${_local_gems_on}" -eq 1 && -x "${CLUSTER_ROOT}/bin/local-gem-env" ]]; then
+  # shellcheck disable=SC1090
+  eval "$("${CLUSTER_ROOT}/bin/local-gem-env" "${WORK_MOUNT}")"
+elif [[ "${_local_gems_on}" -eq 0 ]]; then
+  echo "== ${APP_NAME}: local gem overrides DISABLED"
+fi
+
+echo "== ${APP_NAME}: BUNDLE_PATH=${BUNDLE_PATH:-/cache/bundle}"
+echo "== ${APP_NAME}: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH:-/cache/rubygems}"
+echo "== ${APP_NAME}: YARN_CACHE_FOLDER=${YARN_CACHE_FOLDER:-/cache/yarn-cache}"
+echo "== ${APP_NAME}: ruby $(ruby -v 2>/dev/null || echo missing)"
+echo "== ${APP_NAME}: yarn $(yarn --version 2>/dev/null || echo unknown)"
+
+# --- bundler -----------------------------------------------------------------
+if bundle check >/dev/null 2>&1; then
+  echo "== ${APP_NAME}: bundle already satisfied"
+else
+  echo "== ${APP_NAME}: bundle install (prefer local gem cache)"
+  if ! bundle install --local; then
+    echo "== ${APP_NAME}: local cache incomplete; fetching missing gems"
+    if ! bundle install; then
+      echo "== ${APP_NAME}: retry bundle install" >&2
+      sleep 1
+      bundle install
+    fi
+  fi
+fi
+
+# --- yarn (cluster root workspaces when present) -----------------------------
+if [[ -f "${CLUSTER_ROOT}/package.json" ]] && [[ -f "${CLUSTER_ROOT}/yarn.lock" ]]; then
+  if [[ ! -d "${CLUSTER_ROOT}/node_modules" ]]; then
+    echo "== ${APP_NAME}: yarn install (cluster root)"
+    (
+      cd "${CLUSTER_ROOT}"
+      yarn install --frozen-lockfile --prefer-offline 2>/dev/null || \
+        yarn install --frozen-lockfile || \
+        echo "== ${APP_NAME}: warning: yarn install failed; continuing" >&2
+    ) || true
+  else
+    echo "== ${APP_NAME}: node_modules present; skipping yarn install"
+  fi
+fi
+
+# App-local package.json (no monorepo yarn.lock at cluster root)
+if [[ -f package.json ]] && [[ -f yarn.lock ]] && [[ ! -f "${CLUSTER_ROOT}/yarn.lock" ]]; then
+  if [[ ! -d node_modules ]]; then
+    echo "== ${APP_NAME}: yarn install (app)"
+    yarn install --frozen-lockfile --prefer-offline 2>/dev/null || \
+      yarn install --frozen-lockfile || \
+      echo "== ${APP_NAME}: warning: yarn install failed; continuing" >&2
+  fi
+fi
+
+redact_url() {
+  sed -E 's#(://[^:/@]+:)[^@]+@#\1***@#' <<<"${1:-}"
+}
+
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  echo "== ${APP_NAME}: DATABASE_URL=$(redact_url "${DATABASE_URL}")"
+elif [[ -n "${POSTGRES_HOST:-}" ]]; then
+  echo "== ${APP_NAME}: POSTGRES_HOST=${POSTGRES_HOST} POSTGRES_USER=${POSTGRES_USER:-}"
+else
+  echo "== ${APP_NAME}: warning: no DATABASE_URL or POSTGRES_HOST" >&2
+fi
+
+wait_for_postgres() {
+  # Readiness only — do not open the app database. On a fresh volume the app DB
+  # does not exist until rails db:prepare below.
+  local attempts="${1:-30}"
+  local i
+  local host="${POSTGRES_HOST:-db}"
+  local user="${POSTGRES_USER:-cluster}"
+  local port="${POSTGRES_PORT:-5432}"
+
+  if [[ -n "${DATABASE_URL:-}" ]]; then
+    if [[ "${DATABASE_URL}" =~ @([^:/]+)(:([0-9]+))?/ ]]; then
+      host="${BASH_REMATCH[1]}"
+      [[ -n "${BASH_REMATCH[3]:-}" ]] && port="${BASH_REMATCH[3]}"
+    fi
+    if [[ "${DATABASE_URL}" =~ ://([^:/@]+) ]]; then
+      user="${BASH_REMATCH[1]}"
+    fi
+  fi
+
+  for ((i = 1; i <= attempts; i++)); do
+    if command -v pg_isready >/dev/null 2>&1 && \
+      pg_isready -h "${host}" -p "${port}" -U "${user}" -d postgres >/dev/null 2>&1; then
+      return 0
+    fi
+    echo "== ${APP_NAME}: waiting for PostgreSQL (${i}/${attempts})…"
+    sleep 2
+  done
+  echo "error: ${APP_NAME}: could not connect to PostgreSQL (${host}:${port})" >&2
+  return 1
+}
+
+wait_for_postgres 30
+
+# db:prepare creates the DB if missing and loads schema or runs migrations.
+# db:migrate is a no-op when already current; covers edge cases prepare may miss.
+echo "== ${APP_NAME}: bin/rails db:prepare"
+bin/rails db:prepare
+echo "== ${APP_NAME}: bin/rails db:migrate"
+bin/rails db:migrate
+
+bin/rails runner '
+  cfg = ActiveRecord::Base.connection_db_config
+  adapter = cfg.adapter.to_s
+  db = cfg.database.to_s
+  host = cfg.try(:host).to_s
+  puts "== '"${APP_NAME}"': ActiveRecord adapter=#{adapter} database=#{db} host=#{host}"
+  abort "error: expected postgresql adapter, got #{adapter.inspect}" unless adapter == "postgresql"
+  current = ActiveRecord::Base.connection.select_value("SELECT current_database()")
+  puts "== '"${APP_NAME}"': connected to PostgreSQL database=#{current}"
+'
+
+# Stale pids from prior containers
+rm -f tmp/pids/server.pid 2>/dev/null || true
+
+# Optional app-specific hook (private clusters: seeds, feature flags, etc.)
+if [[ -x bin/after-docker-prepare ]]; then
+  echo "== ${APP_NAME}: bin/after-docker-prepare"
+  # shellcheck disable=SC1091
+  ./bin/after-docker-prepare
+elif [[ -f bin/after-docker-prepare ]]; then
+  echo "== ${APP_NAME}: bin/after-docker-prepare (not executable — chmod +x to run)" >&2
+fi
+
+echo "== ${APP_NAME}: docker-prepare done"

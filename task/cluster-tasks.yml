@@ -83,6 +83,11 @@ tasks:
     cmds:
       - ./bin/warm
 
+  reheat:
+    desc: "Sequential docker-prepare per app (task reheat -- [APP…]); no servers"
+    cmds:
+      - ./bin/reheat {{.CLI_ARGS}}
+
   cache:ensure:
     desc: Create the shared /cache volume
     aliases: [cache]

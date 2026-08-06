@@ -9,8 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Sibling [cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** adoption (branch `cluster-tasks-phase1`): `task wire` / `../cluster-tasks/bin/wire`, thin host `bin/*` wrappers, materialized `docker-app` / `apps` / `local-gem-env`, Task include with `flatten: true`
+### Changed
+
+### Fixed
+
+### Security
+
+## [0.10.0] - 2026-08-06
+
+### Added
+
+- **Sibling [cluster-tasks](https://github.com/Ruby-on-Rails-Wizardry/cluster-tasks)** adoption
+  (merged from `cluster-tasks-phase1`): install/wire bins, Task include, apps.yml-driven UX
 - Docs: AGENTS / ADOPT / SHARED-GEMS describe sibling wire + `BUNDLE_CLEAN=false`
+- **`bin/docker-prepare`** + **`bin/reheat`** (cluster-tasks **v0.4.0**) — prepare-only
+  path and sequential per-app prepare; `docker-app` prepare-then-serve; optional
+  `<app>/bin/after-docker-prepare` hook
 
 ### Changed
 
@@ -25,12 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `shared_secrets: [.common.env]`)
 - **No package-cache re-injection in bins or compose `environment`:** drop
   `MISE_TRUSTED_CONFIG_PATHS` from `x-work-env` (image defaults to `/work`);
-  refresh installed `bin/warm` / `docker-app` / `cache-env` / etc. so they do not
-  export `BUNDLE_*` / `YARN_*` / `MISE_*` (ubuntu-mise owns `/cache` layout)
+  refresh installed bins so they do not export `BUNDLE_*` / `YARN_*` / `MISE_*`
 
 ### Fixed
 
-- Fresh Postgres volume boot: wait uses `pg_isready` (maintenance DB) before `db:prepare` (via rematerialized `bin/docker-app` from cluster-tasks)
+- Fresh Postgres volume boot: wait uses `pg_isready` (maintenance DB) before `db:prepare`
 
 ### Security
 
@@ -232,7 +245,8 @@ First tagged release of the multi-app Docker + mise cluster template.
 - Docker image build: copy root `Gemfile` so `mise install` installs Ruby (not only Node/Yarn)
 - Untrusted `fred/mise.toml` / `george/mise.toml` under the host bind mount
 
-[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/Ruby-on-Rails-Wizardry/docker-mise-cluster/compare/v0.8.0...v0.8.1

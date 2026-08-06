@@ -94,7 +94,7 @@ task up:all
 | Kind | Scripts | Why |
 |------|---------|-----|
 | **Host wrappers** | `compose`, `warm`, `setup`, `doctor`, … | Thin exec → `../cluster-tasks/bin/*` |
-| **Materialized** | `docker-app`, `apps`, `local-gem-env` | Real files under `/work/bin` for containers |
+| **Materialized** | `docker-app`, `docker-prepare`, `apps`, `local-gem-env` | Real files under `/work/bin` for containers |
 | **Task** | `Taskfile.yml` includes sibling with `flatten: true` | One namespace of tasks |
 
 `wire` is **idempotent**. Re-run after updating cluster-tasks. Do **not** nest cluster-tasks as a submodule of this tree.
@@ -131,7 +131,7 @@ george.example.com ──┘
 | Concern | Development (this repo) | Production (Approach A) |
 |---------|-------------------------|-------------------------|
 | Front door | nginx path prefix `/fred`, `/ron`, … | **Hostname** per app (`proxy.host` in each `deploy.yml`) |
-| Process | compose + `bin/docker-app` | Thruster → Puma (`app` Dockerfile `CMD`) |
+| Process | compose + `bin/docker-app` (prepare then server; `task reheat` = prepare only) | Thruster → Puma (`app` Dockerfile `CMD`) |
 | Image | prebuilt `ubuntu-mise:dev` + bind-mount `/work` | Per-app image from each app `Dockerfile` |
 | Tools | runtime `mise install` → `/cache` | Frozen at image build (no mise on boot) |
 | Data | shared compose Postgres + Redis | SQLite volumes (generator default) *or* Postgres accessory later |

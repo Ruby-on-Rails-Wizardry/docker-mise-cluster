@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Managed by cluster-tasks install — standalone copy (no sibling required)
+# Run docker-prepare for each app in sequence (compose run --rm).
+#
+# Use after bin/warm (or alone when the image + volume already exist) so each
+# app hits shared BUNDLE_PATH / yarn / DB without concurrent lock fights.
+# Exits after prepare — does not leave servers running.
+#
+# Usage:
+#   bin/reheat
+#   bin/reheat fred ron
+#   task reheat
+#   task reheat -- fred
+#
+# Requires: docker compose (bin/compose), app services in compose.yml, db up
+# or startable via compose run dependencies.
+set -euo pipefail
+# shellcheck source=lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: bin/reheat [APP…]
+
+  Sequentially run docker-prepare in each app container, then exit.
+  With no APP args, uses all apps from config/apps.yml (bin/apps names).
+
+  Avoids parallel bundle/yarn/db locks on the shared /cache volume.
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+ensure_image
+ensure_cache_volume
+
+if [[ -x "${ROOT}/bin/env-files" ]]; then
+  "${ROOT}/bin/env-files" write 2>/dev/null || true
+fi
+
+APPS=()
+if [[ $# -gt 0 ]]; then
+  APPS=("$@")
+else
+  if [[ ! -x "${ROOT}/bin/apps" ]]; then
+    die "missing bin/apps — re-run wire/install"
+  fi
+  mapfile -t APPS < <("${ROOT}/bin/apps" names)
+fi
+
+if [[ ${#APPS[@]} -eq 0 ]]; then
+  die "no apps to reheat (config/apps.yml empty?)"
+fi
+
+# Ensure Postgres is available for db:prepare (compose run starts depends_on).
+if "${ROOT}/bin/compose" ps --status running db 2>/dev/null | grep -q db; then
+  log "db service already running"
+else
+  log "starting db (and redis if declared) for prepare"
+  "${ROOT}/bin/compose" up -d db 2>/dev/null || true
+  "${ROOT}/bin/compose" up -d redis 2>/dev/null || true
+fi
+
+failures=()
+for app in "${APPS[@]}"; do
+  log "reheat: ${app} (docker-prepare)"
+  # Service working_dir is the app; docker-prepare uses cwd for APP_NAME.
+  # Do not pass --no-deps so DATABASE_URL host "db" is reachable.
+  # Default compose run starts service dependencies (db). Do not pass --no-deps.
+  if ! "${ROOT}/bin/compose" run --rm -T "${app}" \
+    bash -lc 'exec "${WORK_MOUNT:-/work}/bin/docker-prepare"'; then
+    log "error: reheat failed for ${app}"
+    failures+=("${app}")
+  else
+    log "reheat: ${app} ok"
+  fi
+done
+
+if ((${#failures[@]})); then
+  die "reheat failed for: ${failures[*]}"
+fi
+
+log "reheat complete (${#APPS[@]} app(s))"
