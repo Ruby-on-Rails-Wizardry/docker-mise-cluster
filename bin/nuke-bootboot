@@ -129,10 +129,9 @@ if docker volume inspect "${CACHE_VOLUME}" >/dev/null 2>&1; then
 
   app_list="$(printf '%s\n' "${APP_PATHS[@]:-}")"
   log "scanning volume ${CACHE_VOLUME} → /cache"
+  # Image ENV already has BUNDLE_PATH; hardcode paths for cleanup (no -e re-inject).
   docker run --rm \
     -v "${CACHE_VOLUME}:/cache" \
-    -e BUNDLE_PATH=/cache/bundle \
-    -e BUNDLE_USER_HOME=/cache/bundler \
     -e NUKE_DRY_RUN="${DRY_RUN}" \
     -e NUKE_APP_PATHS="${app_list}" \
     "${IMAGE}" \
@@ -153,7 +152,8 @@ rm_path() {
 }
 
 BUNDLE_ROOT="${BUNDLE_PATH:-/cache/bundle}"
-USER_HOME="${BUNDLE_USER_HOME:-/cache/bundler}"
+# Legacy cluster path for shared plugins (image does not set BUNDLE_USER_HOME).
+USER_HOME="/cache/bundler"
 
 # Shared plugin home (if bootboot ever installed without local .bundle)
 rm_path "${USER_HOME}/plugin"

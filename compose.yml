@@ -23,11 +23,12 @@ x-db-env: &db-env
   POSTGRES_USER: ${POSTGRES_USER:-cluster}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cluster}
 
-# Include in every app environment: (compose replaces environment wholesale)
+# Topology only (project bind path). Package-cache ENV (BUNDLE_*/YARN_*/MISE_*)
+# comes from ubuntu-mise image — do not re-list here. For non-default WORK_MOUNT,
+# also pass MISE_TRUSTED_CONFIG_PATHS to match (image defaults trust /work).
 x-work-env: &work-env
   WORK_MOUNT: ${WORK_MOUNT:-/work}
   WORKSPACE: ${WORK_MOUNT:-/work}
-  MISE_TRUSTED_CONFIG_PATHS: ${WORK_MOUNT:-/work}
 
 # Shared by every Rails app (and optional `dev` shell).
 # App non-secrets only — package caches from image; vault via compose.secrets.yml.

@@ -2,8 +2,8 @@
 # Managed by cluster-tasks install — standalone copy (no sibling required)
 # Ensure each Gemfile project has its own .bundle/config (not a shared symlink).
 #
-# Seed from config/bundler-flags.yml when missing. Paths stay in ENV
-# (BUNDLE_PATH, BUNDLE_CACHE_PATH, BUNDLE_USER_HOME on /cache).
+# Seed from config/bundler-flags.yml when missing. Install paths come from
+# ubuntu-mise image ENV + ~/.bundle/config (BUNDLE_PATH, BUNDLE_CACHE_PATH).
 #
 # Always enforce multi-app shared-path safety flags on every run:
 #   BUNDLE_CLEAN=false   — do not prune installed gems for other apps

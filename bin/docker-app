@@ -17,7 +17,8 @@ if [[ ! -f "${CLUSTER_ROOT}/bin/docker-app" ]]; then
   CLUSTER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fi
 
-# Image ENV already points BUNDLE_*/YARN_*/MISE_* at /cache. Dev: mise at runtime.
+# Package-cache paths (BUNDLE_*/YARN_*/MISE_*) come from ubuntu-mise image —
+# do not re-export them. Dev: mise at runtime.
 if command -v mise >/dev/null 2>&1; then
   mise trust "${CLUSTER_ROOT}" 2>/dev/null || true
   mise trust . 2>/dev/null || true
@@ -27,12 +28,6 @@ if command -v mise >/dev/null 2>&1; then
   mise reshim 2>/dev/null || true
   eval "$(mise activate bash)" 2>/dev/null || true
 fi
-
-# Plugins (bootboot, …) on the shared volume when image/runtime did not set them.
-export BUNDLE_USER_HOME="${BUNDLE_USER_HOME:-/cache/bundler}"
-export BUNDLE_CLEAN="${BUNDLE_CLEAN:-false}"
-export BUNDLE_NO_PRUNE="${BUNDLE_NO_PRUNE:-true}"
-mkdir -p "${BUNDLE_USER_HOME}" 2>/dev/null || true
 
 # Shared gems: Gemfile pins published version; local path for cluster checkout.
 # Off when .local-gems.disabled or LOCAL_GEMS=0|false|off (see bin/local-gem).
@@ -55,7 +50,6 @@ fi
 
 echo "== ${APP_NAME}: BUNDLE_PATH=${BUNDLE_PATH:-/cache/bundle}"
 echo "== ${APP_NAME}: BUNDLE_CACHE_PATH=${BUNDLE_CACHE_PATH:-/cache/rubygems}"
-echo "== ${APP_NAME}: BUNDLE_USER_HOME=${BUNDLE_USER_HOME}"
 echo "== ${APP_NAME}: YARN_CACHE_FOLDER=${YARN_CACHE_FOLDER:-/cache/yarn-cache}"
 echo "== ${APP_NAME}: ruby $(ruby -v 2>/dev/null || echo missing)"
 echo "== ${APP_NAME}: yarn $(yarn --version 2>/dev/null || echo unknown)"

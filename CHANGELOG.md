@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shared non-secrets in **`config/shared.env`**; `bin/compose` writes
   **`config/compose.env`** for interpolation only (`config/env.yml` lists
   `shared_secrets: [.common.env]`)
+- **No package-cache re-injection in bins or compose `environment`:** drop
+  `MISE_TRUSTED_CONFIG_PATHS` from `x-work-env` (image defaults to `/work`);
+  refresh installed `bin/warm` / `docker-app` / `cache-env` / etc. so they do not
+  export `BUNDLE_*` / `YARN_*` / `MISE_*` (ubuntu-mise owns `/cache` layout)
 
 ### Fixed
 

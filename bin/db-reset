@@ -136,9 +136,8 @@ can_host_rails() {
   [[ -d "${ROOT}/${app_path}" ]] || return 1
   [[ -f "${ROOT}/${app_path}/bin/rails" ]] || return 1
   # Prefer host when bundler can see the app (after bin/setup).
+  # Do not inject package-cache ENV — host gems are host-local, not /cache.
   (
-    # shellcheck source=bin/cache-env
-    source "${ROOT}/bin/cache-env"
     cd "${ROOT}/${app_path}"
     command -v bundle >/dev/null 2>&1 && bundle check >/dev/null 2>&1
   )
@@ -150,8 +149,6 @@ reset_host() {
   url="$(host_database_url "${db_name}")"
 
   echo "== ${name}: rails db:reset (host) DATABASE_URL=…/${db_name}"
-  # shellcheck source=bin/cache-env
-  source "${ROOT}/bin/cache-env"
   (
     cd "${ROOT}/${path}"
     export DATABASE_URL="${url}"

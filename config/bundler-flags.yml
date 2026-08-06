@@ -3,8 +3,8 @@
 # private <app>/.bundle/config by bin/ensure-bundle-config — never a shared
 # symlink (bootboot and bundle config set --local must not cross apps).
 #
-# Install paths stay in ENV / image: BUNDLE_PATH, BUNDLE_CACHE_PATH,
-# BUNDLE_USER_HOME (plugins on /cache/bundler). Multi-app shared path:
+# Install paths come from ubuntu-mise image ENV + user configs (not compose):
+# BUNDLE_PATH, BUNDLE_CACHE_PATH under /cache. Multi-app shared path:
 #   BUNDLE_CLEAN false  — do not prune installed gems for sibling apps
 #   BUNDLE_NO_PRUNE true — do not prune shared cache on `bundle cache`
 BUNDLE_CACHE_ALL: "true"
